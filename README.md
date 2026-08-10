@@ -1,3 +1,5 @@
+
+
 # ip-discovery - Fast public IP lookup
 
 [![Crates.io](https://img.shields.io/crates/v/ip-discovery.svg)](https://crates.io/crates/ip-discovery)
@@ -83,7 +85,7 @@ cargo install ipd
 ipd                    # Plain IP output
 ipd -4                 # IPv4 only
 ipd -6                 # IPv6 only
-ipd -l                 # Local private IP (alias --private)
+ipd -l                 # Local private IP (also --private / --local)
 ipd -f json            # JSON output
 ipd -f verbose         # Verbose output with provider info
 ipd -s race            # Race all providers, return fastest
