@@ -4,11 +4,6 @@ use ip_discovery::{get_ip, get_ipv4};
 
 #[tokio::main]
 async fn main() {
-    // Initialize logging (optional)
-    tracing_subscriber::fmt()
-        .with_env_filter("ip_discovery=debug")
-        .init();
-
     println!("Getting public IP address...\n");
 
     // Get any IP (v4 or v6)

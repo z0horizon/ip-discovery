@@ -4,16 +4,23 @@
 
 pub(crate) mod providers;
 
-pub use providers::{default_providers, provider_names};
+#[cfg(feature = "tokio")]
+pub use providers::default_providers;
+pub use providers::{default_blocking_providers, provider_names};
 
 use crate::error::ProviderError;
+#[cfg(feature = "tokio")]
 use crate::provider::Provider;
+use crate::provider::{BlockingProvider, BoxedBlockingProvider};
 use crate::types::{IpVersion, Protocol};
-use reqwest::Client;
-use std::future::Future;
 use std::net::IpAddr;
-use std::pin::Pin;
 use std::str::FromStr;
+use std::time::Duration;
+
+#[cfg(feature = "tokio")]
+use std::future::Future;
+#[cfg(feature = "tokio")]
+use std::pin::Pin;
 
 /// Response parser function type
 pub type ResponseParser = fn(&str) -> Option<IpAddr>;
@@ -40,13 +47,15 @@ pub struct HttpProvider {
     url_v4: Option<String>,
     url_v6: Option<String>,
     parser: ResponseParser,
-    client: Client,
+    #[cfg(feature = "tokio")]
+    client: reqwest::Client,
 }
 
 impl HttpProvider {
     /// Create a new HTTP provider (plain text response)
     pub fn new(name: impl Into<String>, url: impl Into<String>) -> Self {
-        let client = Client::builder()
+        #[cfg(feature = "tokio")]
+        let client = reqwest::Client::builder()
             .user_agent(concat!("ip-discovery/", env!("CARGO_PKG_VERSION")))
             .build()
             .unwrap_or_default();
@@ -56,6 +65,7 @@ impl HttpProvider {
             url_v4: Some(url.into()),
             url_v6: None,
             parser: parse_plain_text,
+            #[cfg(feature = "tokio")]
             client,
         }
     }
@@ -80,7 +90,52 @@ impl HttpProvider {
         }
     }
 
-    /// Fetch IP from URL
+    /// Fetch IP from URL synchronously using reqwest blocking client with a timeout
+    pub fn fetch_blocking(
+        &self,
+        version: IpVersion,
+        timeout: Duration,
+    ) -> Result<IpAddr, ProviderError> {
+        let url = self
+            .get_url(version)
+            .ok_or_else(|| ProviderError::message(&self.name, "no URL for IP version"))?;
+
+        let client = reqwest::blocking::Client::builder()
+            .timeout(timeout)
+            .user_agent(concat!("ip-discovery/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .unwrap_or_default();
+
+        let response = client
+            .get(url)
+            .send()
+            .map_err(|e| ProviderError::new(&self.name, e))?;
+
+        if !response.status().is_success() {
+            return Err(ProviderError::message(
+                &self.name,
+                format!("HTTP error: {}", response.status()),
+            ));
+        }
+
+        let text = response
+            .text()
+            .map_err(|e| ProviderError::new(&self.name, e))?;
+
+        let ip = (self.parser)(&text)
+            .ok_or_else(|| ProviderError::message(&self.name, "failed to parse response"))?;
+        if version.matches(ip) {
+            Ok(ip)
+        } else {
+            Err(ProviderError::message(
+                &self.name,
+                "provider returned unexpected IP version",
+            ))
+        }
+    }
+
+    /// Fetch IP from URL asynchronously
+    #[cfg(feature = "tokio")]
     async fn fetch(&self, version: IpVersion) -> Result<IpAddr, ProviderError> {
         let url = self
             .get_url(version)
@@ -105,8 +160,16 @@ impl HttpProvider {
             .await
             .map_err(|e| ProviderError::new(&self.name, e))?;
 
-        (self.parser)(&text)
-            .ok_or_else(|| ProviderError::message(&self.name, "failed to parse response"))
+        let ip = (self.parser)(&text)
+            .ok_or_else(|| ProviderError::message(&self.name, "failed to parse response"))?;
+        if version.matches(ip) {
+            Ok(ip)
+        } else {
+            Err(ProviderError::message(
+                &self.name,
+                "provider returned unexpected IP version",
+            ))
+        }
     }
 }
 
@@ -120,6 +183,33 @@ impl std::fmt::Debug for HttpProvider {
     }
 }
 
+impl BlockingProvider for HttpProvider {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn protocol(&self) -> Protocol {
+        Protocol::Http
+    }
+
+    fn supports_v4(&self) -> bool {
+        self.url_v4.is_some()
+    }
+
+    fn supports_v6(&self) -> bool {
+        self.url_v6.is_some()
+    }
+
+    fn get_ip(&self, version: IpVersion, timeout: Duration) -> Result<IpAddr, ProviderError> {
+        self.fetch_blocking(version, timeout)
+    }
+
+    fn clone_box(&self) -> BoxedBlockingProvider {
+        Box::new(self.clone())
+    }
+}
+
+#[cfg(feature = "tokio")]
 impl Provider for HttpProvider {
     fn name(&self) -> &str {
         &self.name

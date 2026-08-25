@@ -5,10 +5,6 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter("ip_discovery=debug")
-        .init();
-
     // Example 1: DNS only (lightweight, no HTTP dependency needed)
     println!("=== DNS Only ===\n");
     let config = Config::builder()

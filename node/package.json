@@ -1,6 +1,6 @@
 {
   "name": "@zer0horizon/ip-discovery",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Lightweight, high-performance library to discover your public IP address",
   "license": "MIT OR Apache-2.0",
   "author": "zer0horizon",
@@ -25,6 +25,14 @@
   ],
   "main": "index.js",
   "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "*.node"
+  ],
   "napi": {
     "name": "ip-discovery",
     "triples": {

@@ -10,65 +10,48 @@
 //! - **Fallback mechanism**: Automatic retry with different providers
 //! - **Flexible strategies**: First success, race (fastest), or consensus
 //! - **Zero-dependency protocols**: DNS and STUN use raw UDP sockets
-//! - **Async-first**: Built on tokio for high performance
+//! - **Synchronous & Asynchronous**: Zero-dependency blocking API by default, or Tokio async via feature
 //!
-//! ## Quick Start
+//! ## Synchronous (Blocking) Quick Start
 //!
 //! ```rust,no_run
-//! use ip_discovery::{get_ip, get_ipv4, get_ipv6};
+//! use ip_discovery::blocking::{get_ip, get_ipv4};
 //!
-//! #[tokio::main]
-//! async fn main() {
-//!     // Get any IP address (IPv4 or IPv6)
-//!     if let Ok(result) = get_ip().await {
-//!         println!("Public IP: {} (via {})", result.ip, result.provider);
-//!     }
+//! // Get any IP address (IPv4 or IPv6) synchronously without Tokio runtime
+//! if let Ok(result) = get_ip() {
+//!     println!("Public IP: {} (via {})", result.ip, result.provider);
+//! }
 //!
-//!     // Get IPv4 specifically
-//!     if let Ok(result) = get_ipv4().await {
-//!         println!("IPv4: {}", result.ip);
-//!     }
+//! // Get IPv4 specifically
+//! if let Ok(result) = get_ipv4() {
+//!     println!("IPv4: {}", result.ip);
 //! }
 //! ```
 //!
-//! ## Custom Configuration
+//! ## Asynchronous Quick Start (with `tokio` feature)
 //!
 //! ```rust,no_run
-//! use ip_discovery::{Config, Strategy, Protocol, BuiltinProvider, get_ip_with};
-//! use std::time::Duration;
+//! # #[cfg(feature = "tokio")]
+//! # #[tokio::main]
+//! # async fn main() {
+//! use ip_discovery::{get_ip, get_ipv4};
 //!
-//! #[tokio::main]
-//! async fn main() {
-//!     // Use only DNS providers with race strategy
-//!     let config = Config::builder()
-//!         .protocols(&[Protocol::Dns])
-//!         .strategy(Strategy::Race)
-//!         .timeout(Duration::from_secs(5))
-//!         .build();
-//!
-//!     if let Ok(result) = get_ip_with(config).await {
-//!         println!("IP: {} (latency: {:?})", result.ip, result.latency);
-//!     }
-//!
-//!     // Or pick specific providers
-//!     let config = Config::builder()
-//!         .providers(&[
-//!             BuiltinProvider::CloudflareDns,
-//!             BuiltinProvider::GoogleStun,
-//!         ])
-//!         .build();
-//!
-//!     if let Ok(result) = get_ip_with(config).await {
-//!         println!("IP: {}", result.ip);
-//!     }
+//! // Get any IP address asynchronously
+//! if let Ok(result) = get_ip().await {
+//!     println!("Public IP: {} (via {})", result.ip, result.provider);
 //! }
+//! # }
+//! # #[cfg(not(feature = "tokio"))]
+//! # fn main() {}
 //! ```
 
 #![warn(missing_docs)]
 
+pub mod blocking;
 mod config;
 mod error;
 mod provider;
+#[cfg(feature = "tokio")]
 mod resolver;
 mod types;
 
@@ -83,11 +66,15 @@ pub mod stun;
 
 pub use config::{Config, ConfigBuilder, Strategy};
 pub use error::{Error, ProviderError};
-pub use provider::Provider;
+pub use provider::{BlockingProvider, BoxedBlockingProvider};
+#[cfg(feature = "tokio")]
+pub use provider::{BoxedProvider, Provider};
+#[cfg(feature = "tokio")]
 pub use resolver::Resolver;
 pub use types::{BuiltinProvider, IpVersion, Protocol, ProviderResult};
 
-/// Get public IP address using default configuration.
+#[cfg(feature = "tokio")]
+/// Get public IP address using default configuration asynchronously.
 ///
 /// Uses all available protocols with the [`Strategy::First`] fallback strategy
 /// and a 10-second per-provider timeout.
@@ -100,7 +87,8 @@ pub async fn get_ip() -> Result<ProviderResult, Error> {
     get_ip_with(config).await
 }
 
-/// Get public IPv4 address using default configuration.
+#[cfg(feature = "tokio")]
+/// Get public IPv4 address using default configuration asynchronously.
 ///
 /// # Errors
 ///
@@ -110,7 +98,8 @@ pub async fn get_ipv4() -> Result<ProviderResult, Error> {
     get_ip_with(config).await
 }
 
-/// Get public IPv6 address using default configuration.
+#[cfg(feature = "tokio")]
+/// Get public IPv6 address using default configuration asynchronously.
 ///
 /// # Errors
 ///
@@ -120,7 +109,8 @@ pub async fn get_ipv6() -> Result<ProviderResult, Error> {
     get_ip_with(config).await
 }
 
-/// Get public IP address with a custom [`Config`].
+#[cfg(feature = "tokio")]
+/// Get public IP address with a custom [`Config`] asynchronously.
 ///
 /// # Errors
 ///

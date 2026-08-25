@@ -3,6 +3,8 @@
 //! Use [`Config::builder()`] to create a customized configuration,
 //! or [`Config::default()`] for sensible defaults (all protocols, first-success strategy).
 
+use crate::provider::BoxedBlockingProvider;
+#[cfg(feature = "tokio")]
 use crate::provider::BoxedProvider;
 use crate::types::{BuiltinProvider, IpVersion, Protocol};
 use std::time::Duration;
@@ -28,7 +30,10 @@ pub enum Strategy {
 
 /// Configuration for IP detection
 pub struct Config {
-    /// List of providers to use
+    /// List of synchronous blocking providers to use
+    pub(crate) blocking_providers: Vec<BoxedBlockingProvider>,
+    /// List of asynchronous providers to use
+    #[cfg(feature = "tokio")]
     pub(crate) providers: Vec<BoxedProvider>,
     /// Timeout for each provider
     pub(crate) timeout: Duration,
@@ -56,7 +61,9 @@ impl Config {
 /// Created via [`Config::builder()`]. Call methods to customize, then
 /// [`.build()`](ConfigBuilder::build) to produce the final [`Config`].
 pub struct ConfigBuilder {
+    #[cfg(feature = "tokio")]
     custom_providers: Vec<BoxedProvider>,
+    custom_blocking_providers: Vec<BoxedBlockingProvider>,
     timeout: Duration,
     version: IpVersion,
     strategy: Strategy,
@@ -64,6 +71,7 @@ pub struct ConfigBuilder {
 }
 
 /// Filter to select which providers to include
+#[derive(Clone)]
 enum ProviderFilter {
     /// Only providers of specified protocols
     Protocols(Vec<Protocol>),
@@ -75,7 +83,9 @@ impl ConfigBuilder {
     /// Create a new builder with default settings
     pub fn new() -> Self {
         Self {
+            #[cfg(feature = "tokio")]
             custom_providers: Vec::new(),
+            custom_blocking_providers: Vec::new(),
             timeout: Duration::from_secs(10),
             version: IpVersion::Any,
             strategy: Strategy::First,
@@ -116,11 +126,18 @@ impl ConfigBuilder {
         self
     }
 
-    /// Add a custom provider (advanced usage)
+    /// Add a custom async provider (advanced usage)
     ///
     /// Custom providers are added alongside any filter-selected providers.
+    #[cfg(feature = "tokio")]
     pub fn add_provider(mut self, provider: BoxedProvider) -> Self {
         self.custom_providers.push(provider);
+        self
+    }
+
+    /// Add a custom synchronous blocking provider
+    pub fn add_blocking_provider(mut self, provider: BoxedBlockingProvider) -> Self {
+        self.custom_blocking_providers.push(provider);
         self
     }
 
@@ -151,7 +168,34 @@ impl ConfigBuilder {
 
     /// Build the configuration
     pub fn build(mut self) -> Config {
-        let mut providers: Vec<BoxedProvider> = match self.provider_filter.take() {
+        let filter = self.provider_filter.take();
+        #[cfg(feature = "tokio")]
+        let has_custom_providers =
+            !self.custom_blocking_providers.is_empty() || !self.custom_providers.is_empty();
+        #[cfg(not(feature = "tokio"))]
+        let has_custom_providers = !self.custom_blocking_providers.is_empty();
+
+        // Build blocking providers
+        let mut blocking_providers: Vec<BoxedBlockingProvider> = match &filter {
+            Some(ProviderFilter::Protocols(protocols)) => BuiltinProvider::ALL
+                .iter()
+                .filter(|p| protocols.contains(&p.protocol()))
+                .map(|p| p.to_boxed_blocking())
+                .collect(),
+            Some(ProviderFilter::Select(selected)) => {
+                selected.iter().map(|p| p.to_boxed_blocking()).collect()
+            }
+            None if !has_custom_providers => BuiltinProvider::ALL
+                .iter()
+                .map(|p| p.to_boxed_blocking())
+                .collect(),
+            None => Vec::new(),
+        };
+        blocking_providers.append(&mut self.custom_blocking_providers);
+
+        // Build async providers if tokio is enabled
+        #[cfg(feature = "tokio")]
+        let mut providers: Vec<BoxedProvider> = match filter {
             Some(ProviderFilter::Protocols(protocols)) => BuiltinProvider::ALL
                 .iter()
                 .filter(|p| protocols.contains(&p.protocol()))
@@ -160,16 +204,17 @@ impl ConfigBuilder {
             Some(ProviderFilter::Select(selected)) => {
                 selected.into_iter().map(|p| p.to_boxed()).collect()
             }
-            None if self.custom_providers.is_empty() => {
+            None if !has_custom_providers => {
                 BuiltinProvider::ALL.iter().map(|p| p.to_boxed()).collect()
             }
             None => Vec::new(),
         };
-
-        // Append any custom providers added via add_provider()
+        #[cfg(feature = "tokio")]
         providers.append(&mut self.custom_providers);
 
         Config {
+            blocking_providers,
+            #[cfg(feature = "tokio")]
             providers,
             timeout: self.timeout,
             version: self.version,

@@ -2,6 +2,8 @@
 
 use super::protocol::DnsClass;
 use super::{DnsProvider, DnsRecordType};
+use crate::provider::BoxedBlockingProvider;
+#[cfg(feature = "tokio")]
 use crate::provider::BoxedProvider;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
@@ -57,7 +59,17 @@ pub fn provider_names() -> &'static [&'static str] {
     &["Google DNS", "Cloudflare DNS", "OpenDNS"]
 }
 
-/// Get default DNS providers
+/// Get default blocking DNS providers
+pub fn default_blocking_providers() -> Vec<BoxedBlockingProvider> {
+    vec![
+        Box::new(cloudflare()),
+        Box::new(google()),
+        Box::new(opendns()),
+    ]
+}
+
+/// Get default async DNS providers
+#[cfg(feature = "tokio")]
 pub fn default_providers() -> Vec<BoxedProvider> {
     vec![
         Box::new(cloudflare()),

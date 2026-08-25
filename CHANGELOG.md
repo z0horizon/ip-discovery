@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-08-25
+
+### Added
+
+- Added a synchronous `blocking` API for DNS, STUN, HTTP, and custom
+  `BlockingProvider` implementations without requiring a Tokio runtime.
+- Added blocking `First`, `Race`, and `Consensus` strategies and a blocking CLI.
+- Added deterministic blocking, timeout, malformed-packet, offline, and feature
+  matrix coverage.
+- Added contributor, security, and maintainer-only manual release guidance.
+
+### Changed
+
+- **BREAKING:** Tokio is no longer enabled by default. Enable `tokio` or its
+  `async` alias to retain the top-level async functions, `Provider`, and async
+  `Resolver` API.
+- **BREAKING:** The `ipd` CLI now uses the blocking implementation internally.
+- `IpVersion::Any` prefers IPv4 when both address families are available.
+- crates.io and npm publishing are performed manually; CI only verifies and
+  builds release artifacts.
+
+### Fixed
+
+- Enforced caller-visible timeouts for blocking providers, including custom
+  providers and zero-duration DNS/STUN requests.
+- Validated DNS response source, transaction ID, response flags, truncation,
+  and requested IP family.
+- Validated STUN success-response type, transaction ID, declared message
+  length, attribute boundaries, and padding.
+- Propagated OS randomness failures instead of sending predictable DNS/STUN
+  transaction IDs.
+- Made Node.js network tests explicitly opt-in so failures cannot be silently
+  converted into passing tests.
+
 ## [0.4.1] - 2026-07-19
 
 ### Added

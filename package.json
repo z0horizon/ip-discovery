@@ -1,11 +1,11 @@
 {
   "name": "ip-discovery-workspace",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "scripts": {
     "prepare": "husky",
-    "lint": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --all-features -- -D warnings",
-    "test": "cargo test --workspace && npm --prefix node test"
+    "lint": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo clippy --package ip-discovery --no-default-features --features dns,stun -- -D warnings",
+    "test": "cargo test --workspace --all-features && cargo test --package ip-discovery --no-default-features --features dns,stun && npm --prefix node test"
   },
   "devDependencies": {
     "husky": "^9.1.4"

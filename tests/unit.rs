@@ -250,7 +250,11 @@ mod types_tests {
 #[cfg(feature = "http")]
 #[cfg(test)]
 mod http_tests {
-    use ip_discovery::http::{parse_cloudflare_trace, parse_plain_text};
+    use ip_discovery::http::{parse_cloudflare_trace, parse_plain_text, HttpProvider};
+    use ip_discovery::IpVersion;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::time::Duration;
 
     // ── parse_plain_text ────────────────────────────────────────────
 
@@ -420,5 +424,92 @@ kex=X25519\n";
         let ip = parse_cloudflare_trace(response);
         assert!(ip.is_some());
         assert_eq!(ip.unwrap().to_string(), "198.51.100.42");
+    }
+
+    #[test]
+    fn blocking_http_rejects_wrong_ip_family() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\nConnection: close\r\n\r\n203.0.113.1")
+                .unwrap();
+        });
+
+        let provider = HttpProvider::new("local-http", &url).with_v6_url(url);
+        let result = provider.fetch_blocking(IpVersion::V6, Duration::from_secs(1));
+
+        assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod blocking_api_tests {
+    use ip_discovery::blocking::{get_ip_with, Resolver};
+    use ip_discovery::{
+        BlockingProvider, BoxedBlockingProvider, Config, Error, IpVersion, Protocol, ProviderError,
+    };
+    use std::net::{IpAddr, Ipv4Addr};
+    use std::time::Duration;
+
+    #[derive(Clone)]
+    struct DummyProvider {
+        name: String,
+        ip: Option<IpAddr>,
+    }
+
+    impl BlockingProvider for DummyProvider {
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn protocol(&self) -> Protocol {
+            Protocol::Dns
+        }
+        fn get_ip(&self, _version: IpVersion, _timeout: Duration) -> Result<IpAddr, ProviderError> {
+            self.ip
+                .ok_or_else(|| ProviderError::message(&self.name, "no ip"))
+        }
+        fn clone_box(&self) -> BoxedBlockingProvider {
+            Box::new(self.clone())
+        }
+    }
+
+    #[test]
+    fn test_blocking_provider_defaults() {
+        let p = DummyProvider {
+            name: "test".to_string(),
+            ip: None,
+        };
+        assert!(p.supports_v4());
+        assert!(!p.supports_v6());
+        assert!(p.supports_version(IpVersion::V4));
+        assert!(!p.supports_version(IpVersion::V6));
+        assert!(p.supports_version(IpVersion::Any));
+    }
+
+    #[test]
+    fn test_blocking_empty_providers() {
+        let config = Config::builder().protocols(&[]).build();
+        let res = get_ip_with(config);
+        assert!(matches!(res, Err(Error::NoProvidersForVersion)));
+    }
+
+    #[test]
+    fn test_blocking_resolver_new_and_resolve() {
+        let ip = IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8));
+        let config = Config::builder()
+            .add_blocking_provider(Box::new(DummyProvider {
+                name: "dummy".to_string(),
+                ip: Some(ip),
+            }))
+            .build();
+        let resolver = Resolver::new(config);
+        let res = resolver.resolve().unwrap();
+        assert_eq!(res.ip, ip);
+        assert_eq!(res.provider, "dummy");
+        assert_eq!(res.protocol, Protocol::Dns);
     }
 }

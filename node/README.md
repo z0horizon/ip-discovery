@@ -4,11 +4,11 @@ Lightweight, high-performance Node.js native library to discover your public and
 
 ## Features
 
-- **Fast & Lightweight**: Core implementation written in Rust with zero runtime dependencies.
+- **Fast & Lightweight**: Core implementation written in Rust with zero JavaScript runtime dependencies.
 - **Multiple Protocols**: Supports **STUN** (UDP), **DNS** (UDP), and **HTTP** protocols.
 - **Offline-Friendly Local IP**: Synchronous helper to query the system's primary private IP (IPv4 & IPv6) without sending network packets.
 - **Multiple Resolution Strategies**:
-  - `First`: Return the first successful response (fastest, default).
+  - `First`: Try providers in order and return the first success (default).
   - `Race`: Query all providers concurrently and return the fastest response.
   - `Consensus`: Query multiple providers and return the IP only if they agree (highly secure).
 - **TypeScript Support**: Fully type-safe bindings generated out of the box.

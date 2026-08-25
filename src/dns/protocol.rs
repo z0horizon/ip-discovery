@@ -37,6 +37,8 @@ pub enum DnsClass {
 /// Error returned when building a DNS query packet.
 #[derive(Debug)]
 pub enum DnsQueryError {
+    /// The operating system could not provide a random transaction ID.
+    Random(getrandom::Error),
     /// A single DNS label exceeds the 63-byte limit.
     LabelTooLong(usize),
     /// An empty label was found (e.g. `"example..com"`).
@@ -48,6 +50,7 @@ pub enum DnsQueryError {
 impl fmt::Display for DnsQueryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Self::Random(error) => write!(f, "Failed to generate transaction ID: {error}"),
             Self::LabelTooLong(len) => write!(f, "Label too long: {} bytes (max 63)", len),
             Self::EmptyLabel => write!(f, "Empty label in domain name"),
             Self::DomainTooLong(len) => write!(f, "Domain too long: {} bytes (max 253)", len),
@@ -70,7 +73,7 @@ pub fn build_query(
 
     // Transaction ID (cryptographically random)
     let mut id_bytes = [0u8; 2];
-    let _ = getrandom::fill(&mut id_bytes);
+    getrandom::fill(&mut id_bytes).map_err(DnsQueryError::Random)?;
     packet.extend_from_slice(&id_bytes);
 
     // Flags: standard query, recursion desired

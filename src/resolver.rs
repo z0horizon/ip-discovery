@@ -54,10 +54,17 @@ impl Resolver {
         let start = Instant::now();
         let fut = provider.get_ip(self.config.version);
         let timeout_duration = self.config.timeout;
+        let version = self.config.version;
 
         Box::pin(async move {
             match timeout(timeout_duration, fut).await {
                 Ok(Ok(ip)) => {
+                    if !version.matches(ip) {
+                        return Err(ProviderError::message(
+                            provider_name,
+                            "provider returned unexpected IP version",
+                        ));
+                    }
                     let latency = start.elapsed();
                     Ok(ProviderResult {
                         ip,

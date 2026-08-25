@@ -68,15 +68,20 @@ pub struct StunMessage {
 
 impl StunMessage {
     /// Create a new STUN message
-    pub fn new(msg_type: StunMethod) -> Self {
+    pub fn new(msg_type: StunMethod) -> Result<Self, getrandom::Error> {
         let mut transaction_id = [0u8; 12];
-        let _ = getrandom::fill(&mut transaction_id);
+        getrandom::fill(&mut transaction_id)?;
 
-        Self {
+        Ok(Self {
             msg_type,
             transaction_id,
             attributes: Vec::new(),
-        }
+        })
+    }
+
+    /// Return the STUN message class encoded in the header.
+    pub fn method(&self) -> StunMethod {
+        self.msg_type
     }
 
     /// Get transaction ID
@@ -127,28 +132,46 @@ impl StunMessage {
         transaction_id.copy_from_slice(&data[8..20]);
 
         // Parse attributes
+        if msg_length % 4 != 0 {
+            return Err("invalid message length");
+        }
+
+        let end = 20usize
+            .checked_add(msg_length)
+            .ok_or("message length overflow")?;
+        if data.len() < end {
+            return Err("truncated message");
+        }
+
         let mut attributes = Vec::new();
         let mut offset = 20;
-        let end = 20 + msg_length;
 
-        while offset + 4 <= end && offset + 4 <= data.len() {
+        while offset < end {
+            if offset.checked_add(4).ok_or("attribute length overflow")? > end {
+                return Err("truncated attribute header");
+            }
             let attr_type_raw = u16::from_be_bytes([data[offset], data[offset + 1]]);
             let attr_len = u16::from_be_bytes([data[offset + 2], data[offset + 3]]) as usize;
 
             offset += 4;
-
-            if offset + attr_len > data.len() {
-                break;
+            let value_end = offset
+                .checked_add(attr_len)
+                .ok_or("attribute length overflow")?;
+            if value_end > end {
+                return Err("attribute exceeds message length");
             }
 
             let attr_type = AttributeType::from_u16(attr_type_raw);
-            let attr_value = data[offset..offset + attr_len].to_vec();
+            let attr_value = data[offset..value_end].to_vec();
             attributes.push((attr_type, attr_value));
 
             // Padding to 4-byte boundary
-            offset += attr_len;
-            if attr_len % 4 != 0 {
-                offset += 4 - (attr_len % 4);
+            let padding = (4 - (attr_len % 4)) % 4;
+            offset = value_end
+                .checked_add(padding)
+                .ok_or("attribute length overflow")?;
+            if offset > end {
+                return Err("invalid attribute padding");
             }
         }
 
@@ -256,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_encode_binding_request() {
-        let msg = StunMessage::new(StunMethod::Request);
+        let msg = StunMessage::new(StunMethod::Request).unwrap();
         let encoded = msg.encode();
 
         assert_eq!(encoded.len(), 20);
@@ -272,14 +295,14 @@ mod tests {
 
     #[test]
     fn test_encode_preserves_transaction_id() {
-        let msg = StunMessage::new(StunMethod::Request);
+        let msg = StunMessage::new(StunMethod::Request).unwrap();
         let encoded = msg.encode();
         assert_eq!(&encoded[8..20], msg.transaction_id());
     }
 
     #[test]
     fn test_encode_decode_roundtrip() {
-        let original = StunMessage::new(StunMethod::Request);
+        let original = StunMessage::new(StunMethod::Request).unwrap();
         let encoded = original.encode();
         let decoded = StunMessage::decode(&encoded).unwrap();
 
@@ -337,6 +360,32 @@ mod tests {
         assert!(matches!(
             StunMessage::decode(&data),
             Err("unknown message type")
+        ));
+    }
+
+    #[test]
+    fn test_decode_rejects_truncated_declared_message() {
+        let mut data = Vec::from([
+            0x01, 0x01, 0x00, 0x0c, 0x21, 0x12, 0xa4, 0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]);
+        data.extend_from_slice(&[0x00, 0x20, 0x00, 0x08]);
+
+        assert!(matches!(
+            StunMessage::decode(&data),
+            Err("truncated message")
+        ));
+    }
+
+    #[test]
+    fn test_decode_rejects_attribute_beyond_declared_message() {
+        let mut data = Vec::from([
+            0x01, 0x01, 0x00, 0x04, 0x21, 0x12, 0xa4, 0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]);
+        data.extend_from_slice(&[0x00, 0x20, 0x00, 0x08]);
+
+        assert!(matches!(
+            StunMessage::decode(&data),
+            Err("attribute exceeds message length")
         ));
     }
 
@@ -511,7 +560,7 @@ mod tests {
 
         let mut response = Vec::with_capacity(36);
         response.extend_from_slice(&0x0101u16.to_be_bytes());
-        response.extend_from_slice(&20u16.to_be_bytes());
+        response.extend_from_slice(&24u16.to_be_bytes());
         response.extend_from_slice(&MAGIC_COOKIE.to_be_bytes());
         response.extend_from_slice(&tx_id);
         // Unknown attr with odd length (5 bytes + 3 padding)

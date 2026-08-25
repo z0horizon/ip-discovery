@@ -57,8 +57,7 @@ enum ProtocolArg {
     Http,
 }
 
-#[tokio::main]
-async fn main() -> ExitCode {
+fn main() -> ExitCode {
     let cli = Cli::parse();
 
     if cli.private {
@@ -133,7 +132,7 @@ async fn main() -> ExitCode {
 
     let config = builder.build();
 
-    match ip_discovery::get_ip_with(config).await {
+    match ip_discovery::blocking::get_ip_with(config) {
         Ok(result) => {
             match cli.format {
                 OutputFormat::Plain => {

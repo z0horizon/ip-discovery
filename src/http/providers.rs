@@ -1,6 +1,8 @@
 //! Built-in HTTP providers
 
 use super::{parse_cloudflare_trace, HttpProvider};
+use crate::provider::BoxedBlockingProvider;
+#[cfg(feature = "tokio")]
 use crate::provider::BoxedProvider;
 
 /// Cloudflare trace endpoint
@@ -19,7 +21,13 @@ pub fn provider_names() -> &'static [&'static str] {
     &["Cloudflare", "AWS"]
 }
 
-/// Get default HTTP providers
+/// Get default blocking HTTP providers
+pub fn default_blocking_providers() -> Vec<BoxedBlockingProvider> {
+    vec![Box::new(cloudflare()), Box::new(aws())]
+}
+
+/// Get default async HTTP providers
+#[cfg(feature = "tokio")]
 pub fn default_providers() -> Vec<BoxedProvider> {
     vec![Box::new(cloudflare()), Box::new(aws())]
 }

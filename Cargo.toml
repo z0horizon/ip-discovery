@@ -4,7 +4,7 @@ resolver = "3"
 
 [package]
 name = "ip-discovery"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
 rust-version = "1.85"
 description = "A lightweight, high-performance library for detecting public IP addresses via DNS, HTTP, and STUN protocols"
@@ -16,7 +16,16 @@ readme = "README.md"
 authors = ["zer0horizon"]
 keywords = ["ip", "public-ip", "stun", "dns", "network"]
 categories = ["network-programming", "command-line-utilities"]
-exclude = ["target/", ".github/"]
+include = [
+  "/Cargo.toml",
+  "/src/**",
+  "/tests/**",
+  "/examples/**",
+  "/README.md",
+  "/CHANGELOG.md",
+  "/LICENSE-MIT",
+  "/LICENSE-APACHE",
+]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -30,19 +39,35 @@ default = ["dns", "stun"]
 dns = []
 http = ["dep:reqwest"]
 stun = []
-all = ["dns", "http", "stun"]
+tokio = ["dep:tokio"]
+async = ["tokio"]
+all = ["dns", "http", "stun", "tokio"]
 native-tls = ["reqwest?/native-tls"]
 
 [dependencies]
 getrandom = { version = "0.4", default-features = false }
-tokio = { version = "1", features = ["net", "time"] }
+tokio = { version = "1", features = ["net", "time"], optional = true }
 
 # Optional - HTTP client
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "macros"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[[example]]
+name = "simple"
+required-features = ["tokio"]
+
+[[example]]
+name = "custom_providers"
+required-features = ["tokio"]
+
+[[example]]
+name = "benchmark"
+required-features = ["tokio", "all"]
+
+[[example]]
+name = "blocking"
 
 # The profile that 'dist' will build with
 [profile.dist]

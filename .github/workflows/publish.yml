@@ -1,31 +1,27 @@
-name: Publish Packages
+name: Build Release Packages
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
-  # Job 1: Verify code quality and run tests before anything else
   verify:
-    name: Verify Code Quality (Clippy, Format, Tests)
+    name: Verify Release Source
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: node/package-lock.json
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
         with:
           components: clippy, rustfmt
 
@@ -35,8 +31,30 @@ jobs:
       - name: Run Clippy Lints
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Run Rust Tests
-        run: cargo test --workspace
+      - name: Run Blocking Clippy Lints
+        run: cargo clippy --package ip-discovery --no-default-features --features dns,stun -- -D warnings
+
+      - name: Run Rust Tests With All Features
+        run: cargo test --workspace --all-features
+
+      - name: Run Feature Matrix
+        run: |
+          cargo test --package ip-discovery --no-default-features
+          cargo test --package ip-discovery --no-default-features --features dns
+          cargo test --package ip-discovery --no-default-features --features stun
+          cargo test --package ip-discovery --no-default-features --features http
+          cargo test --package ip-discovery --no-default-features --features dns,stun
+          cargo test --package ip-discovery --no-default-features --features tokio
+
+      - name: Check Documentation
+        run: cargo doc --workspace --all-features --no-deps
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
+      - name: Check Dependencies
+        uses: EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902 # v2
+        with:
+          command: check
 
       - name: Install Node Dependencies
         run: npm ci
@@ -50,7 +68,6 @@ jobs:
         run: npm test
         working-directory: node
 
-  # Job 2: Build native Node.js binaries for all platforms (gated by verify)
   build-node-bindings:
     name: Build Node Bindings - ${{ matrix.settings.target }}
     needs: verify
@@ -69,17 +86,17 @@ jobs:
             target: x86_64-pc-windows-msvc
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: node/package-lock.json
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
         with:
           targets: ${{ matrix.settings.target }}
 
@@ -92,94 +109,27 @@ jobs:
         working-directory: node
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bindings-${{ matrix.settings.target }}
           path: node/*.node
           if-no-files-found: error
 
-  # Job 3: Publish packages to Crates.io and npm (gated by verify and build-node-bindings)
-  publish:
-    name: Publish Releases
-    needs: [verify, build-node-bindings]
+  bundle-node-bindings:
+    name: Bundle Node Bindings
+    needs: build-node-bindings
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          registry-url: 'https://registry.npmjs.org'
-
-      # Download all pre-compiled native binaries
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          path: node/artifacts
+          path: node-bindings
+          pattern: bindings-*
+          merge-multiple: true
 
-      # Move downloaded artifacts to node/ folder (where npm publish expects them)
-      - name: Move artifacts to build directory
-        run: |
-          find node/artifacts -name "*.node" -exec mv {} node/ \;
-          rm -rf node/artifacts
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      # 1. Publish to Crates.io
-      - name: Publish to Crates.io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          # Publish core library
-          echo "Publishing ip-discovery..."
-          status_lib=0
-          output_lib=$(cargo publish --package ip-discovery 2>&1) || status_lib=$?
-          if [ $status_lib -ne 0 ]; then
-            if echo "$output_lib" | grep -q -i "already exists"; then
-              echo "ip-discovery is already published. Skipping."
-            else
-              echo "$output_lib"
-              exit $status_lib
-            fi
-          else
-            echo "$output_lib"
-          fi
-
-          echo "Waiting 30 seconds for crates.io to index the library..."
-          sleep 30
-
-          # Publish CLI utility
-          echo "Publishing ipd..."
-          status_cli=0
-          output_cli=$(cargo publish --package ipd 2>&1) || status_cli=$?
-          if [ $status_cli -ne 0 ]; then
-            if echo "$output_cli" | grep -q -i "already exists"; then
-              echo "ipd is already published. Skipping."
-            else
-              echo "$output_cli"
-              exit $status_cli
-            fi
-          else
-            echo "$output_cli"
-          fi
-
-      # 2. Publish to npm
-      - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          cd node
-          
-          # Dynamically extract package name and version
-          pkg_name=$(node -p "require('./package.json').name")
-          pkg_version=$(node -p "require('./package.json').version")
-          
-          echo "Checking if $pkg_name@$pkg_version already exists on npm registry..."
-          if npm view "$pkg_name@$pkg_version" version >/dev/null 2>&1; then
-            echo "Package $pkg_name@$pkg_version is already published. Skipping."
-          else
-            echo "Publishing $pkg_name@$pkg_version to npm..."
-            npm publish --access public
-          fi
+      - name: Upload combined artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: node-bindings-all
+          path: node-bindings/*.node
+          if-no-files-found: error

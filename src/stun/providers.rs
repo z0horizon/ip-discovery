@@ -1,6 +1,8 @@
 //! Built-in STUN providers
 
 use super::StunProvider;
+use crate::provider::BoxedBlockingProvider;
+#[cfg(feature = "tokio")]
 use crate::provider::BoxedProvider;
 
 /// Google STUN server
@@ -33,7 +35,18 @@ pub fn provider_names() -> &'static [&'static str] {
     ]
 }
 
-/// Get default STUN providers
+/// Get default blocking STUN providers
+pub fn default_blocking_providers() -> Vec<BoxedBlockingProvider> {
+    vec![
+        Box::new(google()),
+        Box::new(cloudflare()),
+        Box::new(google1()),
+        Box::new(google2()),
+    ]
+}
+
+/// Get default async STUN providers
+#[cfg(feature = "tokio")]
 pub fn default_providers() -> Vec<BoxedProvider> {
     vec![
         Box::new(google()),

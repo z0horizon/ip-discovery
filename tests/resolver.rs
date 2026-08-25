@@ -1,6 +1,6 @@
 //! Unit tests for the resolver module — strategies, error paths, and helpers.
 
-#[cfg(test)]
+#[cfg(all(test, feature = "tokio"))]
 mod resolver_tests {
     use ip_discovery::{
         Config, Error, IpVersion, Protocol, Provider, ProviderError, Resolver, Strategy,
@@ -413,6 +413,20 @@ mod resolver_tests {
         assert_eq!(result.ip, v6);
     }
 
+    #[tokio::test]
+    async fn rejects_async_provider_returning_wrong_ip_family() {
+        let config = {
+            let mut builder = Config::builder()
+                .version(IpVersion::V6)
+                .timeout(Duration::from_secs(1));
+            builder = builder.add_provider(MockProvider::v6_only("wrong-family", ip(1, 2, 3, 4)));
+            builder.build()
+        };
+
+        let err = Resolver::new(config).resolve().await.unwrap_err();
+        assert!(matches!(err, Error::AllProvidersFailed(errors) if errors.len() == 1));
+    }
+
     // ── min_agree clamping ──────────────────────────────────────────
 
     #[tokio::test]
@@ -489,5 +503,368 @@ mod resolver_tests {
         );
         let result = Resolver::new(config).resolve().await.unwrap();
         assert_eq!(result.protocol, Protocol::Dns); // MockProvider returns Dns
+    }
+
+    #[tokio::test]
+    async fn async_config_with_only_blocking_custom_provider_has_no_async_providers() {
+        let config = Config::builder()
+            .add_blocking_provider(MockBlockingProviderForAsyncConfig::boxed())
+            .build();
+
+        let err = Resolver::new(config).resolve().await.unwrap_err();
+        assert!(matches!(err, Error::NoProvidersForVersion));
+    }
+
+    #[derive(Clone)]
+    struct MockBlockingProviderForAsyncConfig;
+
+    impl ip_discovery::BlockingProvider for MockBlockingProviderForAsyncConfig {
+        fn name(&self) -> &str {
+            "blocking-only"
+        }
+        fn protocol(&self) -> Protocol {
+            Protocol::Dns
+        }
+        fn get_ip(&self, _version: IpVersion, _timeout: Duration) -> Result<IpAddr, ProviderError> {
+            Ok(ip(1, 1, 1, 1))
+        }
+        fn clone_box(&self) -> ip_discovery::BoxedBlockingProvider {
+            Box::new(self.clone())
+        }
+    }
+
+    impl MockBlockingProviderForAsyncConfig {
+        fn boxed() -> ip_discovery::BoxedBlockingProvider {
+            Box::new(Self)
+        }
+    }
+}
+
+#[cfg(test)]
+mod blocking_resolver_tests {
+    use ip_discovery::blocking::Resolver;
+    use ip_discovery::{
+        BlockingProvider, BoxedBlockingProvider, Config, Error, IpVersion, Protocol, ProviderError,
+        Strategy,
+    };
+    use std::net::{IpAddr, Ipv4Addr};
+    use std::time::Duration;
+
+    struct MockBlockingProvider {
+        name: String,
+        ip: IpAddr,
+        delay: Duration,
+        v4: bool,
+        v6: bool,
+    }
+
+    impl MockBlockingProvider {
+        fn ok(name: &str, ip: IpAddr) -> BoxedBlockingProvider {
+            Box::new(Self {
+                name: name.to_string(),
+                ip,
+                delay: Duration::ZERO,
+                v4: true,
+                v6: false,
+            })
+        }
+
+        fn ok_delayed(name: &str, ip: IpAddr, delay: Duration) -> BoxedBlockingProvider {
+            Box::new(Self {
+                name: name.to_string(),
+                ip,
+                delay,
+                v4: true,
+                v6: false,
+            })
+        }
+    }
+
+    impl BlockingProvider for MockBlockingProvider {
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn protocol(&self) -> Protocol {
+            Protocol::Dns
+        }
+        fn supports_v4(&self) -> bool {
+            self.v4
+        }
+        fn supports_v6(&self) -> bool {
+            self.v6
+        }
+        fn get_ip(&self, _version: IpVersion, _timeout: Duration) -> Result<IpAddr, ProviderError> {
+            if !self.delay.is_zero() {
+                std::thread::sleep(self.delay);
+            }
+            Ok(self.ip)
+        }
+        fn clone_box(&self) -> BoxedBlockingProvider {
+            Box::new(Self {
+                name: self.name.clone(),
+                ip: self.ip,
+                delay: self.delay,
+                v4: self.v4,
+                v6: self.v6,
+            })
+        }
+    }
+
+    struct FailBlockingProvider {
+        name: String,
+        msg: String,
+    }
+
+    #[derive(Clone)]
+    struct PanicBlockingProvider;
+
+    impl BlockingProvider for PanicBlockingProvider {
+        fn name(&self) -> &str {
+            "panics"
+        }
+        fn protocol(&self) -> Protocol {
+            Protocol::Dns
+        }
+        fn get_ip(&self, _version: IpVersion, _timeout: Duration) -> Result<IpAddr, ProviderError> {
+            panic!("intentional provider panic")
+        }
+        fn clone_box(&self) -> BoxedBlockingProvider {
+            Box::new(self.clone())
+        }
+    }
+
+    impl FailBlockingProvider {
+        fn boxed(name: &str, msg: &str) -> BoxedBlockingProvider {
+            Box::new(Self {
+                name: name.to_string(),
+                msg: msg.to_string(),
+            })
+        }
+    }
+
+    impl BlockingProvider for FailBlockingProvider {
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn protocol(&self) -> Protocol {
+            Protocol::Dns
+        }
+        fn get_ip(&self, _version: IpVersion, _timeout: Duration) -> Result<IpAddr, ProviderError> {
+            Err(ProviderError::message(&self.name, &self.msg))
+        }
+        fn clone_box(&self) -> BoxedBlockingProvider {
+            Box::new(Self {
+                name: self.name.clone(),
+                msg: self.msg.clone(),
+            })
+        }
+    }
+
+    #[test]
+    fn test_blocking_first_success() {
+        let ip = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let config = Config::builder()
+            .add_blocking_provider(MockBlockingProvider::ok("p1", ip))
+            .build();
+        let res = Resolver::new(config).resolve().unwrap();
+        assert_eq!(res.ip, ip);
+        assert_eq!(res.provider, "p1");
+    }
+
+    #[test]
+    fn test_blocking_first_fallback() {
+        let ip = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let config = Config::builder()
+            .add_blocking_provider(FailBlockingProvider::boxed("p1", "err"))
+            .add_blocking_provider(MockBlockingProvider::ok("p2", ip))
+            .build();
+        let res = Resolver::new(config).resolve().unwrap();
+        assert_eq!(res.ip, ip);
+        assert_eq!(res.provider, "p2");
+    }
+
+    #[test]
+    fn test_blocking_all_failed() {
+        let config = Config::builder()
+            .add_blocking_provider(FailBlockingProvider::boxed("p1", "err1"))
+            .add_blocking_provider(FailBlockingProvider::boxed("p2", "err2"))
+            .build();
+        let res = Resolver::new(config).resolve();
+        assert!(matches!(res, Err(Error::AllProvidersFailed(_))));
+    }
+
+    #[test]
+    fn test_blocking_provider_panic_becomes_provider_error() {
+        let config = Config::builder()
+            .timeout(Duration::from_millis(100))
+            .add_blocking_provider(Box::new(PanicBlockingProvider))
+            .build();
+
+        let err = Resolver::new(config).resolve().unwrap_err();
+        match err {
+            Error::AllProvidersFailed(errors) => {
+                assert_eq!(errors.len(), 1);
+                assert!(errors[0].to_string().contains("provider panicked"));
+            }
+            other => panic!("expected AllProvidersFailed, got {other}"),
+        }
+    }
+
+    #[test]
+    fn test_blocking_race() {
+        let ip1 = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let ip2 = IpAddr::V4(Ipv4Addr::new(2, 2, 2, 2));
+        let config = Config::builder()
+            .strategy(Strategy::Race)
+            .add_blocking_provider(MockBlockingProvider::ok_delayed(
+                "slow",
+                ip1,
+                Duration::from_millis(50),
+            ))
+            .add_blocking_provider(MockBlockingProvider::ok("fast", ip2))
+            .build();
+        let res = Resolver::new(config).resolve().unwrap();
+        assert_eq!(res.ip, ip2);
+        assert_eq!(res.provider, "fast");
+    }
+
+    #[test]
+    fn test_blocking_consensus() {
+        let ip1 = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let ip2 = IpAddr::V4(Ipv4Addr::new(2, 2, 2, 2));
+        let config = Config::builder()
+            .strategy(Strategy::Consensus { min_agree: 2 })
+            .add_blocking_provider(MockBlockingProvider::ok("p1", ip1))
+            .add_blocking_provider(MockBlockingProvider::ok("p2", ip1))
+            .add_blocking_provider(MockBlockingProvider::ok("p3", ip2))
+            .build();
+        let res = Resolver::new(config).resolve().unwrap();
+        assert_eq!(res.ip, ip1);
+    }
+
+    #[test]
+    fn test_blocking_first_enforces_timeout_and_falls_back() {
+        let slow_ip = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let fast_ip = IpAddr::V4(Ipv4Addr::new(2, 2, 2, 2));
+        let config = Config::builder()
+            .timeout(Duration::from_millis(10))
+            .add_blocking_provider(MockBlockingProvider::ok_delayed(
+                "ignores-timeout",
+                slow_ip,
+                Duration::from_millis(150),
+            ))
+            .add_blocking_provider(MockBlockingProvider::ok("fallback", fast_ip))
+            .build();
+
+        let started = std::time::Instant::now();
+        let result = Resolver::new(config).resolve().unwrap();
+
+        assert_eq!(result.provider, "fallback");
+        assert_eq!(result.ip, fast_ip);
+        assert!(started.elapsed() < Duration::from_millis(100));
+    }
+
+    #[test]
+    fn test_blocking_race_enforces_overall_timeout() {
+        let ip = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let config = Config::builder()
+            .strategy(Strategy::Race)
+            .timeout(Duration::from_millis(10))
+            .add_blocking_provider(MockBlockingProvider::ok_delayed(
+                "slow-a",
+                ip,
+                Duration::from_millis(150),
+            ))
+            .add_blocking_provider(MockBlockingProvider::ok_delayed(
+                "slow-b",
+                ip,
+                Duration::from_millis(150),
+            ))
+            .build();
+
+        let started = std::time::Instant::now();
+        let result = Resolver::new(config).resolve();
+
+        assert!(matches!(result, Err(Error::AllProvidersFailed(errors)) if errors.len() == 2));
+        assert!(started.elapsed() < Duration::from_millis(100));
+    }
+
+    #[test]
+    fn test_blocking_consensus_uses_results_received_before_deadline() {
+        let winning_ip = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let slow_ip = IpAddr::V4(Ipv4Addr::new(2, 2, 2, 2));
+        let config = Config::builder()
+            .strategy(Strategy::Consensus { min_agree: 2 })
+            .timeout(Duration::from_millis(20))
+            .add_blocking_provider(MockBlockingProvider::ok("fast-a", winning_ip))
+            .add_blocking_provider(MockBlockingProvider::ok("fast-b", winning_ip))
+            .add_blocking_provider(MockBlockingProvider::ok_delayed(
+                "ignores-timeout",
+                slow_ip,
+                Duration::from_millis(150),
+            ))
+            .build();
+
+        let started = std::time::Instant::now();
+        let result = Resolver::new(config).resolve().unwrap();
+
+        assert_eq!(result.ip, winning_ip);
+        assert!(started.elapsed() < Duration::from_millis(100));
+    }
+
+    #[test]
+    fn rejects_blocking_provider_returning_wrong_ip_family() {
+        let config = Config::builder()
+            .version(IpVersion::V6)
+            .add_blocking_provider(Box::new(MockBlockingProvider {
+                name: "wrong-family".to_string(),
+                ip: IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)),
+                delay: Duration::ZERO,
+                v4: false,
+                v6: true,
+            }))
+            .build();
+
+        let err = Resolver::new(config).resolve().unwrap_err();
+        assert!(matches!(err, Error::AllProvidersFailed(errors) if errors.len() == 1));
+    }
+
+    #[cfg(feature = "tokio")]
+    #[test]
+    fn blocking_config_with_only_async_custom_provider_has_no_blocking_providers() {
+        let config = Config::builder()
+            .add_provider(AsyncOnlyProvider::boxed())
+            .build();
+
+        let err = Resolver::new(config).resolve().unwrap_err();
+        assert!(matches!(err, Error::NoProvidersForVersion));
+    }
+
+    #[cfg(feature = "tokio")]
+    struct AsyncOnlyProvider;
+
+    #[cfg(feature = "tokio")]
+    impl ip_discovery::Provider for AsyncOnlyProvider {
+        fn name(&self) -> &str {
+            "async-only"
+        }
+        fn protocol(&self) -> Protocol {
+            Protocol::Dns
+        }
+        fn get_ip(
+            &self,
+            _version: IpVersion,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<IpAddr, ProviderError>> + Send + '_>,
+        > {
+            Box::pin(async { Ok(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))) })
+        }
+    }
+
+    #[cfg(feature = "tokio")]
+    impl AsyncOnlyProvider {
+        fn boxed() -> ip_discovery::BoxedProvider {
+            Box::new(Self)
+        }
     }
 }

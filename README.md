@@ -80,7 +80,7 @@ cargo install ipd
 ### CLI Usage
 
 ```bash
-ipd                    # Plain IP output
+ipd                    # Plain output; prefer IPv4, fall back to IPv6
 ipd -4                 # IPv4 only
 ipd -6                 # IPv6 only
 ipd -l                 # Local private IP (alias --private)
@@ -102,8 +102,8 @@ ipd -t 5               # 5 second timeout
 - Built-in providers from Google, Cloudflare, AWS, and OpenDNS
 - IPv4 and IPv6
 - Sequential fallback, race, or consensus strategies
-- Custom providers via the `Provider` trait
-- Async, built on [tokio](https://tokio.rs)
+- Custom synchronous providers via `BlockingProvider`
+- Optional async API via the `tokio`/`async` feature
 
 ## Usage
 
@@ -111,31 +111,47 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ip-discovery = "0.4"
-tokio = { version = "1", features = ["full"] }
+ip-discovery = "0.5"
 ```
 
-Then:
+The default API is blocking and does not require Tokio:
 
 ```rust
-use ip_discovery::get_ip;
+use ip_discovery::blocking::{get_ip, get_ipv4};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let result = get_ip().await?;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let result = get_ip()?;
     println!("{} via {} in {:?}", result.ip, result.provider, result.latency);
+
+    let v4 = get_ipv4()?;
+    println!("IPv4: {}", v4.ip);
     Ok(())
 }
 ```
 
-You can also request a specific IP version:
+For the Tokio async API, opt in explicitly:
+
+```toml
+[dependencies]
+ip-discovery = { version = "0.5", features = ["async"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+```
 
 ```rust
-use ip_discovery::{get_ipv4, get_ipv6};
+use ip_discovery::{get_ip, get_ipv4};
 
-let v4 = get_ipv4().await?;
-let v6 = get_ipv6().await?;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let result = get_ip().await?;
+    let v4 = get_ipv4().await?;
+    println!("{} / {}", result.ip, v4.ip);
+    Ok(())
+}
 ```
+
+The blocking API is callable from a Tokio application too. Because it blocks
+the current thread, run network lookups inside `tokio::task::spawn_blocking`,
+or use the async API above when Tokio integration is preferred.
 
 To lookup local private IP addresses (synchronously and offline-friendly):
 
@@ -201,7 +217,8 @@ The package exports type-safe enums matching the Rust configuration options:
 The defaults (Cloudflare STUN → Cloudflare DNS → Google STUN/DNS → OpenDNS; 10s timeout) work well for most cases. If you need more control:
 
 ```rust
-use ip_discovery::{Config, Strategy, Protocol, BuiltinProvider, get_ip_with};
+use ip_discovery::{Config, Strategy, Protocol, BuiltinProvider};
+use ip_discovery::blocking::get_ip_with;
 use std::time::Duration;
 
 // DNS only, race all DNS providers
@@ -211,7 +228,7 @@ let config = Config::builder()
     .timeout(Duration::from_secs(5))
     .build();
 
-let result = get_ip_with(config).await?;
+let result = get_ip_with(config)?;
 ```
 
 ```rust
@@ -262,20 +279,34 @@ All built-in providers are from tier-1 infrastructure companies:
 | `dns` | ✅ | DNS detection (raw UDP, no extra deps) |
 | `stun` | ✅ | STUN detection (raw UDP, no extra deps) |
 | `http` | ❌ | HTTP detection (pulls in `reqwest` + `rustls`) |
-| `all` | ❌ | Enable all protocols (`dns` + `stun` + `http`) |
-| `native-tls` | ❌ | Use OS-native TLS instead of rustls (requires `http`) |
+| `tokio` | ❌ | Enable the Tokio-based async API |
+| `async` | ❌ | Alias for `tokio` |
+| `all` | ❌ | Enable all protocols and the Tokio async API |
+| `native-tls` | ❌ | Add reqwest's OS-native TLS backend (requires `http`; rustls remains enabled) |
 
 By default, only DNS and STUN are enabled — zero network library dependencies, fast compile times. To also use HTTP providers:
 
 ```toml
-ip-discovery = { version = "0.4", features = ["http"] }
+ip-discovery = { version = "0.5", features = ["http"] }
 ```
 
 Or enable everything:
 
 ```toml
-ip-discovery = { version = "0.4", features = ["all"] }
+ip-discovery = { version = "0.5", features = ["all"] }
 ```
+
+## Timeout behavior
+
+The configured timeout is per provider for `First`. `Race` and `Consensus`
+share one caller-visible deadline while their providers run concurrently.
+Blocking providers execute on worker threads so the caller returns at the
+deadline even if a custom provider ignores its timeout. Rust cannot forcibly
+cancel that custom code, so its worker may continue briefly in the background.
+
+Network lookup requires connectivity. In an offline or UDP-blocked environment,
+the call returns an error after the applicable deadline; local private-IP
+helpers remain available without contacting a remote service.
 
 ## Performance
 
@@ -290,27 +321,25 @@ Default provider order prioritizes UDP-based protocols with IPv4 + IPv6 support 
 cargo run --example benchmark --all-features
 ```
 
-## Logging
-
-Uses [`tracing`](https://docs.rs/tracing) for diagnostics:
-
-```rust
-tracing_subscriber::fmt()
-    .with_env_filter("ip_discovery=debug")
-    .init();
-```
-
 ## Examples
 
 ```bash
-cargo run --example simple
-cargo run --example custom_providers
-cargo run --example benchmark
+cargo run --example blocking
+cargo run --example simple --features tokio
+cargo run --example custom_providers --features tokio
+cargo run --example benchmark --all-features
 ```
 
 ## MSRV
 
 Rust **1.85** or later.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and required
+checks. Report vulnerabilities privately according to
+[SECURITY.md](SECURITY.md). Maintainer-only manual publishing steps are in
+[RELEASING.md](RELEASING.md).
 
 ## License
 

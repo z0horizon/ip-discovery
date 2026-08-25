@@ -38,6 +38,16 @@ pub enum IpVersion {
     Any,
 }
 
+impl IpVersion {
+    pub(crate) fn matches(self, ip: IpAddr) -> bool {
+        match self {
+            Self::V4 => ip.is_ipv4(),
+            Self::V6 => ip.is_ipv6(),
+            Self::Any => true,
+        }
+    }
+}
+
 /// Result from a successful IP lookup
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderResult {
@@ -146,7 +156,38 @@ impl BuiltinProvider {
         Self::Aws,
     ];
 
-    /// Create the boxed provider instance
+    /// Create the boxed blocking provider instance
+    pub(crate) fn to_boxed_blocking(self) -> crate::provider::BoxedBlockingProvider {
+        match self {
+            #[cfg(feature = "stun")]
+            Self::GoogleStun => Box::new(crate::stun::providers::google()),
+            #[cfg(feature = "stun")]
+            Self::GoogleStun1 => Box::new(crate::stun::providers::google1()),
+            #[cfg(feature = "stun")]
+            Self::GoogleStun2 => Box::new(crate::stun::providers::google2()),
+            #[cfg(feature = "stun")]
+            Self::CloudflareStun => Box::new(crate::stun::providers::cloudflare()),
+
+            #[cfg(feature = "dns")]
+            Self::GoogleDns => Box::new(crate::dns::providers::google()),
+            #[cfg(feature = "dns")]
+            Self::CloudflareDns => Box::new(crate::dns::providers::cloudflare()),
+            #[cfg(feature = "dns")]
+            Self::OpenDns => Box::new(crate::dns::providers::opendns()),
+
+            #[cfg(feature = "http")]
+            Self::CloudflareHttp => Box::new(crate::http::providers::cloudflare()),
+            #[cfg(feature = "http")]
+            Self::Aws => Box::new(crate::http::providers::aws()),
+
+            // Feature not enabled — create a stub that always errors
+            #[allow(unreachable_patterns)]
+            other => Box::new(super::provider::DisabledProvider(format!("{:?}", other))),
+        }
+    }
+
+    /// Create the boxed async provider instance
+    #[cfg(feature = "tokio")]
     pub(crate) fn to_boxed(self) -> crate::provider::BoxedProvider {
         match self {
             #[cfg(feature = "stun")]

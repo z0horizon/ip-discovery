@@ -3,27 +3,9 @@ const assert = require('node:assert');
 const net = require('node:net');
 const { getIp, getIpv4, getIpv6, getPrivateIp, getPrivateIpv6, IpVersion, Strategy, Protocol, BuiltinProvider } = require('./index.js');
 
-// Helper to run network integration tests safely, warning instead of failing on network timeouts or failures.
+// Public-network tests are opt-in so the default suite is deterministic/offline-safe.
 function testNetwork(name, fn) {
-  test(name, async () => {
-    try {
-      await fn();
-    } catch (err) {
-      const isNetworkError =
-        err.message.includes('timeout') ||
-        err.message.includes('failed') ||
-        err.message.includes('All providers failed') ||
-        err.message.includes('io error') ||
-        err.message.includes('dns error') ||
-        err.message.includes('connection');
-
-      if (isNetworkError) {
-        console.warn(`[SKIP] Network test "${name}" failed due to network condition/timeout: ${err.message}`);
-      } else {
-        throw err;
-      }
-    }
-  });
+  test(name, { skip: process.env.IP_DISCOVERY_NETWORK_TESTS !== '1' }, fn);
 }
 
 testNetwork('getIpv4 should retrieve a valid IPv4 address', async () => {
@@ -35,16 +17,12 @@ testNetwork('getIpv4 should retrieve a valid IPv4 address', async () => {
   assert.ok(net.isIPv4(result.ip), 'IP should be a valid IPv4 address');
 });
 
-test('getIpv6 should retrieve a valid IPv6 address or reject cleanly if IPv6 is not supported', async () => {
-  try {
-    const result = await getIpv6();
-    assert.ok(result.ip);
-    assert.ok(result.provider);
-    assert.ok(result.protocol);
-    assert.ok(net.isIPv6(result.ip), 'IP should be a valid IPv6 address');
-  } catch (error) {
-    assert.match(error.message, /discovery failed|failed/i);
-  }
+testNetwork('getIpv6 should retrieve a valid IPv6 address', async () => {
+  const result = await getIpv6();
+  assert.ok(result.ip);
+  assert.ok(result.provider);
+  assert.ok(result.protocol);
+  assert.ok(net.isIPv6(result.ip), 'IP should be a valid IPv6 address');
 });
 
 testNetwork('getIp with no config should resolve correctly', async () => {

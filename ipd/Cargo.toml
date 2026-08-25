@@ -1,6 +1,6 @@
 [package]
 name = "ipd"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
 rust-version = "1.85"
 description = "CLI tool to discover your public IP address"
@@ -19,7 +19,6 @@ name = "ipd"
 dist = true
 
 [dependencies]
-ip-discovery = { version = "0.4", path = "..", features = ["all"] }
+ip-discovery = { version = "0.5", path = "..", default-features = false, features = ["dns", "stun", "http"] }
 clap = { version = "4", features = ["derive"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 serde_json = "1"

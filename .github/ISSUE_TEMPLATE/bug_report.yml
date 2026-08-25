@@ -1,0 +1,46 @@
+name: Bug report
+description: Report reproducible incorrect behavior
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: For security vulnerabilities, use GitHub private vulnerability reporting instead.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include code, commands, configuration, and relevant output without secrets.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: ip-discovery 0.5.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, Rust/Node version, and enabled Cargo features.
+    validations:
+      required: true
+  - type: dropdown
+    id: network
+    attributes:
+      label: Network dependency
+      options:
+        - Reproduces with a local deterministic test
+        - Requires public internet access
+        - Unknown
+    validations:
+      required: true
