@@ -56,19 +56,19 @@ $ ipd
 **Homebrew (macOS):**
 
 ```bash
-brew install zer0horizon/tap/ipd
+brew install z0horizon/tap/ipd
 ```
 
 **Shell (macOS & Linux):**
 
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/zer0horizon/ip-discovery/releases/latest/download/ipd-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/z0horizon/ip-discovery/releases/latest/download/ipd-installer.sh | sh
 ```
 
 **PowerShell (Windows):**
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/zer0horizon/ip-discovery/releases/latest/download/ipd-installer.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/z0horizon/ip-discovery/releases/latest/download/ipd-installer.ps1 | iex"
 ```
 
 **Cargo:**
@@ -173,13 +173,13 @@ The library can also be used in Node.js environments via prebuilt native binding
 ### Install
 
 ```bash
-npm install @zer0horizon/ip-discovery
+npm install @z0horizon/ip-discovery
 ```
 
 ### Usage (JavaScript/TypeScript)
 
 ```javascript
-const { getIp, getIpv4, getIpv6, getPrivateIp, getPrivateIpv6, IpVersion, Strategy, Protocol, BuiltinProvider } = require('@zer0horizon/ip-discovery');
+const { getIp, getIpv4, getIpv6, getPrivateIp, getPrivateIpv6, IpVersion, Strategy, Protocol, BuiltinProvider } = require('@z0horizon/ip-discovery');
 
 // Simple lookup (Public IP)
 const result = await getIpv4();

@@ -5,10 +5,10 @@ edition = "2021"
 rust-version = "1.85"
 description = "CLI tool to discover your public IP address"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/zer0horizon/ip-discovery"
-homepage = "https://github.com/zer0horizon/ip-discovery"
+repository = "https://github.com/z0horizon/ip-discovery"
+homepage = "https://github.com/z0horizon/ip-discovery"
 readme = "../README.md"
-authors = ["zer0horizon"]
+authors = ["z0horizon"]
 keywords = ["ip", "public-ip", "cli", "network"]
 categories = ["command-line-utilities", "network-programming"]
 

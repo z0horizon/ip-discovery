@@ -17,7 +17,7 @@ or pull request.
 
 Use GitHub's private vulnerability reporting page:
 
-<https://github.com/zer0horizon/ip-discovery/security/advisories/new>
+<https://github.com/z0horizon/ip-discovery/security/advisories/new>
 
 If private reporting is unavailable, open a public issue requesting a private
 contact channel without including exploit details or sensitive information.

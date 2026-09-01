@@ -1,4 +1,4 @@
-# @zer0horizon/ip-discovery
+# @z0horizon/ip-discovery
 
 Lightweight, high-performance Node.js native library to discover your public and local private IP addresses. Built on top of a robust Rust core using `napi-rs` for maximum speed and safety.
 
@@ -18,7 +18,7 @@ Lightweight, high-performance Node.js native library to discover your public and
 ## Installation
 
 ```bash
-npm install @zer0horizon/ip-discovery
+npm install @z0horizon/ip-discovery
 ```
 
 ---
@@ -28,7 +28,7 @@ npm install @zer0horizon/ip-discovery
 ### 1. Retrieve Public IP (Asynchronous)
 
 ```javascript
-const { getIpv4, getIpv6 } = require('@zer0horizon/ip-discovery');
+const { getIpv4, getIpv6 } = require('@z0horizon/ip-discovery');
 
 async function main() {
   try {
@@ -50,7 +50,7 @@ main();
 ### 2. Retrieve Local Private IP (Synchronous & Offline)
 
 ```javascript
-const { getPrivateIp, getPrivateIpv6 } = require('@zer0horizon/ip-discovery');
+const { getPrivateIp, getPrivateIpv6 } = require('@z0horizon/ip-discovery');
 
 // Returns primary network interface IP address or null if offline.
 // Safe, synchronous, and doesn't send any network packets.
@@ -68,7 +68,7 @@ console.log('Local Private IPv6:', localV6 || 'Not connected');
 You can use the `getIp` function with a custom configuration object to filter protocols, choose providers, or adjust the resolution strategy.
 
 ```javascript
-const { getIp, IpVersion, Strategy, Protocol, BuiltinProvider } = require('@zer0horizon/ip-discovery');
+const { getIp, IpVersion, Strategy, Protocol, BuiltinProvider } = require('@z0horizon/ip-discovery');
 
 async function customLookup() {
   const config = {

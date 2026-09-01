@@ -55,12 +55,15 @@ Run the `Build Release Packages` workflow manually for the release commit. It
 verifies the source and uploads native bindings for Linux x64, macOS x64,
 macOS arm64, and Windows x64. It does not publish anything.
 
-Download all `bindings-*` artifacts and copy the `.node` files into `node/`.
-With the GitHub CLI, replace `RUN_ID` with the completed workflow run:
+Download the combined `node-bindings-all` artifact into a temporary directory,
+then copy the verified files into `node/`. Using a temporary directory avoids
+the extraction failure that occurs when a binding already exists:
 
 ```bash
-gh run download RUN_ID --dir node/artifacts
-find node/artifacts -name '*.node' -exec cp {} node/ \;
+BINDINGS_DIR="$(mktemp -d)"
+gh run download RUN_ID --name node-bindings-all --dir "$BINDINGS_DIR"
+ls -lh "$BINDINGS_DIR"/*.node
+cp "$BINDINGS_DIR"/*.node node/
 ```
 
 Verify that all four expected native binaries are present, then inspect the npm
@@ -109,9 +112,11 @@ Actions secrets for this project.
 After all packages are available, tag the exact release commit and push the tag:
 
 ```bash
-git tag -s vVERSION -m "vVERSION"
+git tag -a vVERSION -m "vVERSION"
 git push origin vVERSION
 ```
+
+Use `git tag -s` instead only when GPG signing is configured locally.
 
 The cargo-dist workflow may create the GitHub Release and CLI installers from
 the tag and is currently configured to update the Homebrew tap. It never
@@ -121,3 +126,37 @@ package.
 
 Published versions are immutable. Fix a bad release with a new patch version;
 do not delete and reuse a version number.
+
+## Automated maintainer workflow
+
+The repository includes a defensive wrapper for the manual process. It checks
+manifest versions, Git/CI state, local release gates, Node artifacts, registry
+ordering, the cargo-dist GitHub Release, and the Homebrew formula:
+
+```bash
+scripts/release.sh all 0.5.1
+```
+
+Preview all mutations first:
+
+```bash
+scripts/release.sh all 0.5.1 --dry-run
+```
+
+Each phase is independently rerunnable, which is useful after authentication or
+registry-index delays:
+
+```bash
+scripts/release.sh check 0.5.1
+scripts/release.sh artifacts 0.5.1
+scripts/release.sh publish 0.5.1
+scripts/release.sh tag 0.5.1
+scripts/release.sh verify 0.5.1
+```
+
+`publish` skips versions already present on crates.io or npm. Irreversible
+publish and tag steps require typed confirmation unless `--yes` is supplied.
+Tags are annotated by default, so GPG is not required; use `--sign-tag` only on
+a machine with signing configured. The script never reads, writes, or uploads
+registry tokens—it relies on the existing `cargo login`, `npm login`, and `gh`
+sessions.
