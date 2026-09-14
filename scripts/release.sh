@@ -385,14 +385,13 @@ phase_verify() {
     log "Verification passed for $VERSION (dry-run)"
     return 0
   fi
-  require_commands base64 curl gh npm
+  require_commands curl gh npm
   crate_exists ip-discovery || die "Missing crates.io ip-discovery $VERSION"
   crate_exists ipd || die "Missing crates.io ipd $VERSION"
   npm_exists || die "Missing npm package $VERSION"
   gh release view "$tag" --repo "$REPO" >/dev/null || die "Missing GitHub Release $tag"
   local formula_version
-  formula_version=$(gh api "repos/z0horizon/homebrew-tap/contents/Formula/ipd.rb" --jq '.content' 2>/dev/null \
-    | base64 -d 2>/dev/null \
+  formula_version=$(gh api -H "Accept: application/vnd.github.v3.raw" "repos/z0horizon/homebrew-tap/contents/Formula/ipd.rb" 2>/dev/null \
     | sed -n 's/^[[:space:]]*version[[:space:]]*"\(.*\)"/\1/p' || true)
   if [[ -n "$formula_version" ]]; then
     [[ "$formula_version" == "$VERSION" ]] || die "Homebrew formula has version $formula_version; expected $VERSION"
