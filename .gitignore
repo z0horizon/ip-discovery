@@ -15,3 +15,4 @@
 # Node.js
 node_modules/
 *.node
+.bindings-receipt

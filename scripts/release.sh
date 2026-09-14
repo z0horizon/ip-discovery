@@ -342,7 +342,7 @@ phase_tag() {
     previous_run="__none__"
   else
     previous_run=$(gh run list --repo "$REPO" --workflow release.yml --branch "$tag" --limit 1 \
-      --json databaseId --jq '.[0].databaseId // empty')
+      --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
     confirm tag
     if git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
       local tag_commit
@@ -372,7 +372,7 @@ phase_verify() {
     log "Verification passed for $VERSION (dry-run)"
     return 0
   fi
-  require_commands curl gh node npm
+  require_commands base64 curl gh npm
   crate_exists ip-discovery || die "Missing crates.io ip-discovery $VERSION"
   crate_exists ipd || die "Missing crates.io ipd $VERSION"
   npm_exists || die "Missing npm package $VERSION"
