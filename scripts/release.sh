@@ -251,7 +251,7 @@ npm_exists() {
 
 confirm() {
   local action="$1" answer
-  [[ "$YES" == true ]] && return 0
+  [[ "$YES" == true || "$DRY_RUN" == true ]] && return 0
   printf 'Type "%s %s" to continue: ' "$action" "$VERSION" >&2
   IFS= read -r answer
   [[ "$answer" == "$action $VERSION" ]] || die "Confirmation did not match"
@@ -273,29 +273,41 @@ publish_crate() {
     log "$crate $VERSION already exists; skipping"
     return 0
   fi
+  run_mutation cargo publish --dry-run -p "$crate"
   confirm "publish-$crate"
   run_mutation cargo publish -p "$crate"
   [[ "$DRY_RUN" == true ]] || wait_for_crate "$crate" || die "$crate $VERSION did not become visible on crates.io"
 }
 
+publish_npm() {
+  if npm_exists; then
+    log "npm package $VERSION already exists; skipping"
+    return 0
+  fi
+  [[ "$DRY_RUN" == true ]] || npm whoami >/dev/null
+  npm pack ./node --dry-run
+  confirm publish-npm
+  run_mutation npm publish ./node --access public
+}
+
 phase_publish() {
-  require_commands cargo curl git npm
+  require_commands cargo curl node npm
   validate_version
   assert_versions
   assert_clean_main
-  validate_bindings_dir node
-  cargo publish --dry-run -p ip-discovery
-  publish_crate ip-discovery
-  cargo publish --dry-run -p ipd
-  publish_crate ipd
-  if npm_exists; then
-    log "npm package $VERSION already exists; skipping"
+  if [[ "$DRY_RUN" == true ]]; then
+    if ! find node -maxdepth 1 -type f -name '*.node' | grep -q .; then
+      log "[dry-run] Node bindings not present locally; skipping validate_bindings_dir"
+    else
+      validate_bindings_dir node
+    fi
   else
-    npm whoami >/dev/null
-    npm pack ./node --dry-run
-    confirm publish-npm
-    run_mutation npm publish ./node --access public
+    validate_bindings_dir node
   fi
+  publish_crate ip-discovery
+  publish_crate ipd
+  publish_npm
+  log "All packages published for $VERSION"
 }
 
 phase_tag() {
@@ -304,9 +316,13 @@ phase_tag() {
   validate_version
   assert_versions
   assert_clean_main
-  crate_exists ip-discovery || die "ip-discovery $VERSION is not on crates.io"
-  crate_exists ipd || die "ipd $VERSION is not on crates.io"
-  npm_exists || die "npm package $VERSION is not published"
+  if [[ "$DRY_RUN" == true ]]; then
+    log "[dry-run] Skipping crates.io and npm existence check"
+  else
+    crate_exists ip-discovery || die "ip-discovery $VERSION is not on crates.io"
+    crate_exists ipd || die "ipd $VERSION is not on crates.io"
+    npm_exists || die "npm package $VERSION is not published"
+  fi
   existing=$(git ls-remote --tags origin "refs/tags/$tag")
   if [[ -n "$existing" ]]; then
     log "$tag already exists on origin; skipping tag creation"
@@ -331,6 +347,11 @@ phase_tag() {
 
 phase_verify() {
   local tag="v$VERSION" formula_version
+  if [[ "$DRY_RUN" == true ]]; then
+    log "[dry-run] Skipping remote verification checks"
+    log "Verification passed for $VERSION (dry-run)"
+    return 0
+  fi
   require_commands brew curl gh npm
   crate_exists ip-discovery || die "Missing crates.io ip-discovery $VERSION"
   crate_exists ipd || die "Missing crates.io ipd $VERSION"
