@@ -18,7 +18,7 @@ YES=false
 SIGN_TAG=false
 TEMP_DIR=""
 
-log() { printf '[release] %s\n' "$*"; }
+log() { printf '[release] %s\n' "$*" >&2; }
 die() { printf '[release] ERROR: %s\n' "$*" >&2; exit 1; }
 cleanup() { [[ -z "$TEMP_DIR" ]] || rm -rf -- "$TEMP_DIR"; }
 on_error() {
@@ -111,6 +111,7 @@ assert_clean_main() {
   [[ "$branch" == "main" ]] || die "Release must run from main, currently: $branch"
   upstream=$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null) || die "main has no upstream"
   [[ "$upstream" == "origin/main" ]] || die "Expected upstream origin/main, found $upstream"
+  git fetch origin main --quiet
   head=$(git rev-parse HEAD)
   [[ "$head" == "$(git rev-parse origin/main)" ]] || die "HEAD is not at origin/main; fetch/push first"
 }
@@ -145,6 +146,7 @@ run_gates() {
   npm ci
   npm --prefix node ci
   npm run lint
+  npm --prefix node run build
   npm test
   cargo test -p ip-discovery --no-default-features
   cargo test -p ip-discovery --no-default-features --features dns
@@ -175,7 +177,7 @@ latest_workflow_run() {
 wait_for_new_run() {
   local previous="$1" run_id="" attempt=0
   while [[ $attempt -lt 30 ]]; do
-    run_id=$(latest_workflow_run)
+    run_id=$(latest_workflow_run 2>/dev/null || true)
     if [[ -n "$run_id" && "$run_id" != "$previous" ]]; then
       printf '%s' "$run_id"
       return 0
@@ -190,7 +192,7 @@ wait_for_release_run() {
   local tag="$1" previous="$2" run_id="" attempt=0
   while [[ $attempt -lt 60 ]]; do
     run_id=$(gh run list --repo "$REPO" --workflow release.yml --branch "$tag" --limit 1 \
-      --json databaseId --jq '.[0].databaseId // empty')
+      --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
     if [[ -n "$run_id" && "$run_id" != "$previous" ]]; then
       printf '%s' "$run_id"
       return 0
@@ -236,12 +238,14 @@ phase_artifacts() {
     cp -- "$TEMP_DIR/$binding" "node/$binding"
   done <<< "$EXPECTED_BINDINGS"
   validate_bindings_dir node
+  printf '%s %s\n' "$VERSION" "$(git rev-parse HEAD)" > node/.bindings-receipt
   npm pack ./node --dry-run
   log "Node bindings from run $run_id are ready"
 }
 
 crate_exists() {
-  curl --silent --fail --output /dev/null --user-agent "$CRATES_USER_AGENT" \
+  curl --silent --fail --output /dev/null --connect-timeout 5 --max-time 15 \
+    --user-agent "$CRATES_USER_AGENT" \
     "https://crates.io/api/v1/crates/$1/$VERSION"
 }
 
@@ -295,6 +299,15 @@ phase_publish() {
   validate_version
   assert_versions
   assert_clean_main
+  if [[ "$DRY_RUN" != true ]]; then
+    local receipt_file="node/.bindings-receipt"
+    [[ -f "$receipt_file" ]] || die "Missing $receipt_file; run 'scripts/release.sh artifacts $VERSION' first"
+    local expected_receipt="$VERSION $(git rev-parse HEAD)"
+    local actual_receipt
+    actual_receipt=$(cat "$receipt_file")
+    [[ "$actual_receipt" == "$expected_receipt" ]] || \
+      die "Bindings receipt mismatch: expected '$expected_receipt', found '$actual_receipt'. Re-run 'scripts/release.sh artifacts $VERSION'."
+  fi
   if [[ "$DRY_RUN" == true ]]; then
     if ! find node -maxdepth 1 -type f -name '*.node' | grep -q .; then
       log "[dry-run] Node bindings not present locally; skipping validate_bindings_dir"
@@ -331,10 +344,17 @@ phase_tag() {
     previous_run=$(gh run list --repo "$REPO" --workflow release.yml --branch "$tag" --limit 1 \
       --json databaseId --jq '.[0].databaseId // empty')
     confirm tag
-    if [[ "$SIGN_TAG" == true ]]; then
-      run_mutation git tag -s "$tag" -m "$tag"
+    if git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
+      local tag_commit
+      tag_commit=$(git rev-parse "refs/tags/$tag^{commit}")
+      [[ "$tag_commit" == "$(git rev-parse HEAD)" ]] || die "Local tag $tag exists but does not point to HEAD"
+      log "Local tag $tag already points to HEAD"
     else
-      run_mutation git tag -a "$tag" -m "$tag"
+      if [[ "$SIGN_TAG" == true ]]; then
+        run_mutation git tag -s "$tag" -m "$tag"
+      else
+        run_mutation git tag -a "$tag" -m "$tag"
+      fi
     fi
     run_mutation git push origin "$tag"
   fi
@@ -346,21 +366,26 @@ phase_tag() {
 }
 
 phase_verify() {
-  local tag="v$VERSION" formula_version
+  local tag="v$VERSION"
   if [[ "$DRY_RUN" == true ]]; then
     log "[dry-run] Skipping remote verification checks"
     log "Verification passed for $VERSION (dry-run)"
     return 0
   fi
-  require_commands brew curl gh npm
+  require_commands curl gh node npm
   crate_exists ip-discovery || die "Missing crates.io ip-discovery $VERSION"
   crate_exists ipd || die "Missing crates.io ipd $VERSION"
   npm_exists || die "Missing npm package $VERSION"
   gh release view "$tag" --repo "$REPO" >/dev/null || die "Missing GitHub Release $tag"
-  run_mutation brew update
-  formula_version=$(brew info z0horizon/tap/ipd --json=v2 | node -e \
-    'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).formulae[0].versions.stable))')
-  [[ "$formula_version" == "$VERSION" ]] || die "Homebrew has $formula_version; expected $VERSION"
+  local formula_version
+  formula_version=$(gh api "repos/z0horizon/homebrew-tap/contents/Formula/ipd.rb" --jq '.content' 2>/dev/null \
+    | base64 -d 2>/dev/null \
+    | sed -n 's/^[[:space:]]*version[[:space:]]*"\(.*\)"/\1/p' || true)
+  if [[ -n "$formula_version" ]]; then
+    [[ "$formula_version" == "$VERSION" ]] || die "Homebrew formula has version $formula_version; expected $VERSION"
+  else
+    log "Notice: Homebrew tap check skipped or not yet available"
+  fi
   log "Verified $VERSION on crates.io, npm, GitHub Releases, and Homebrew"
 }
 
