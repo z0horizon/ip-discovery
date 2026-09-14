@@ -1,5 +1,5 @@
 use clap::Parser;
-use ip_discovery::{Config, IpVersion, Protocol, Strategy};
+use ip_discovery::{BuiltinProvider, Config, IpVersion, Protocol, Strategy};
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -26,6 +26,10 @@ struct Cli {
     /// Protocol filter: dns, stun, http (can be repeated)
     #[arg(short, long)]
     protocol: Vec<ProtocolArg>,
+
+    /// Filter by specific provider (can be repeated): google-stun, cloudflare-dns, etc.
+    #[arg(long = "provider")]
+    provider: Vec<BuiltinProviderArg>,
 
     /// Timeout per provider in seconds
     #[arg(short, long, default_value = "10")]
@@ -55,6 +59,37 @@ enum ProtocolArg {
     Dns,
     Stun,
     Http,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+#[value(rename_all = "kebab-case")]
+enum BuiltinProviderArg {
+    GoogleStun,
+    GoogleStun1,
+    GoogleStun2,
+    CloudflareStun,
+    GoogleDns,
+    CloudflareDns,
+    #[value(alias = "opendns")]
+    OpenDns,
+    CloudflareHttp,
+    Aws,
+}
+
+impl From<BuiltinProviderArg> for BuiltinProvider {
+    fn from(arg: BuiltinProviderArg) -> Self {
+        match arg {
+            BuiltinProviderArg::GoogleStun => Self::GoogleStun,
+            BuiltinProviderArg::GoogleStun1 => Self::GoogleStun1,
+            BuiltinProviderArg::GoogleStun2 => Self::GoogleStun2,
+            BuiltinProviderArg::CloudflareStun => Self::CloudflareStun,
+            BuiltinProviderArg::GoogleDns => Self::GoogleDns,
+            BuiltinProviderArg::CloudflareDns => Self::CloudflareDns,
+            BuiltinProviderArg::OpenDns => Self::OpenDns,
+            BuiltinProviderArg::CloudflareHttp => Self::CloudflareHttp,
+            BuiltinProviderArg::Aws => Self::Aws,
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -130,6 +165,11 @@ fn main() -> ExitCode {
         builder = builder.protocols(&protocols);
     }
 
+    if !cli.provider.is_empty() {
+        let providers: Vec<BuiltinProvider> = cli.provider.into_iter().map(Into::into).collect();
+        builder = builder.providers(&providers);
+    }
+
     let config = builder.build();
 
     match ip_discovery::blocking::get_ip_with(config) {
@@ -163,5 +203,77 @@ fn main() -> ExitCode {
             eprintln!("error: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cli_provider_flag() {
+        let cli = Cli::try_parse_from([
+            "ipd",
+            "--provider",
+            "cloudflare-dns",
+            "--provider",
+            "google-stun",
+        ])
+        .unwrap();
+        assert_eq!(cli.provider.len(), 2);
+        assert_eq!(cli.provider[0], BuiltinProviderArg::CloudflareDns);
+        assert_eq!(cli.provider[1], BuiltinProviderArg::GoogleStun);
+
+        let provider: BuiltinProvider = cli.provider[0].into();
+        assert_eq!(provider, BuiltinProvider::CloudflareDns);
+    }
+
+    #[test]
+    fn test_cli_provider_opendns() {
+        let cli = Cli::try_parse_from(["ipd", "--provider", "open-dns"]).unwrap();
+        assert_eq!(cli.provider[0], BuiltinProviderArg::OpenDns);
+
+        let cli_alias = Cli::try_parse_from(["ipd", "--provider", "opendns"]).unwrap();
+        assert_eq!(cli_alias.provider[0], BuiltinProviderArg::OpenDns);
+    }
+
+    #[test]
+    fn test_builtin_provider_arg_from_all_variants() {
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::GoogleStun),
+            BuiltinProvider::GoogleStun
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::GoogleStun1),
+            BuiltinProvider::GoogleStun1
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::GoogleStun2),
+            BuiltinProvider::GoogleStun2
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::CloudflareStun),
+            BuiltinProvider::CloudflareStun
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::GoogleDns),
+            BuiltinProvider::GoogleDns
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::CloudflareDns),
+            BuiltinProvider::CloudflareDns
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::OpenDns),
+            BuiltinProvider::OpenDns
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::CloudflareHttp),
+            BuiltinProvider::CloudflareHttp
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::Aws),
+            BuiltinProvider::Aws
+        );
     }
 }
