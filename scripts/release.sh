@@ -104,8 +104,17 @@ assert_clean_main() {
   local status branch head upstream
   status=$(git status --short)
   if [[ -n "$status" ]]; then
-    printf '[release] ERROR: Worktree is not clean:\n%s\n' "$status" >&2
-    exit 1
+    if [[ "$DRY_RUN" == true ]]; then
+      log "[dry-run] Warning: Worktree is not clean:"
+      printf '%s\n' "$status" >&2
+    else
+      printf '[release] ERROR: Worktree is not clean:\n%s\n' "$status" >&2
+      exit 1
+    fi
+  fi
+  if [[ "$DRY_RUN" == true ]]; then
+    log "[dry-run] Skipping branch and upstream check (currently on $(git branch --show-current))"
+    return 0
   fi
   branch=$(git branch --show-current)
   [[ "$branch" == "main" ]] || die "Release must run from main, currently: $branch"
@@ -129,6 +138,10 @@ assert_generated_release_workflow() {
 }
 
 assert_ci_green() {
+  if [[ "$DRY_RUN" == true ]]; then
+    log "[dry-run] Skipping CI green check"
+    return 0
+  fi
   local sha result status conclusion
   sha=$(git rev-parse HEAD)
   result=$(gh run list --repo "$REPO" --workflow ci.yml --commit "$sha" --limit 1 \
@@ -219,12 +232,12 @@ phase_artifacts() {
   validate_version
   assert_versions
   assert_clean_main
-  previous=$(latest_workflow_run)
   if [[ "$DRY_RUN" == true ]]; then
     run_mutation gh workflow run "$WORKFLOW" --repo "$REPO" --ref main
     log "Would wait for the new run, download $NODE_ARTIFACT, validate four targets, and copy them to node/"
     return 0
   fi
+  previous=$(latest_workflow_run 2>/dev/null || true)
   gh workflow run "$WORKFLOW" --repo "$REPO" --ref main
   log "Waiting for GitHub Actions run to appear"
   run_id=$(wait_for_new_run "$previous") || die "Timed out waiting for $WORKFLOW run"
