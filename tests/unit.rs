@@ -170,7 +170,7 @@ mod error_tests {
 
 #[cfg(test)]
 mod types_tests {
-    use ip_discovery::{BuiltinProvider, IpVersion, Protocol};
+    use ip_discovery::{BuiltinProvider, IpVersion, Protocol, ProviderResult};
 
     #[test]
     fn test_protocol_display() {
@@ -313,6 +313,30 @@ mod types_tests {
             Ok(BuiltinProvider::GoogleDns)
         );
         assert!(BuiltinProvider::from_str("invalid-provider").is_err());
+    }
+
+    #[test]
+    fn test_provider_result_ip_helpers() {
+        use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+        use std::time::Duration;
+
+        let v4_res = ProviderResult {
+            ip: IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)),
+            provider: "test".into(),
+            protocol: Protocol::Dns,
+            latency: Duration::from_millis(10),
+        };
+        assert!(v4_res.is_ipv4());
+        assert!(!v4_res.is_ipv6());
+
+        let v6_res = ProviderResult {
+            ip: IpAddr::V6(Ipv6Addr::LOCALHOST),
+            provider: "test".into(),
+            protocol: Protocol::Dns,
+            latency: Duration::from_millis(10),
+        };
+        assert!(!v6_res.is_ipv4());
+        assert!(v6_res.is_ipv6());
     }
 }
 

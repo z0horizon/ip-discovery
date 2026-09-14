@@ -136,6 +136,18 @@ impl ProviderResult {
             _ => None,
         }
     }
+
+    /// Returns `true` if the detected public IP is an IPv4 address.
+    #[inline]
+    pub fn is_ipv4(&self) -> bool {
+        self.ip.is_ipv4()
+    }
+
+    /// Returns `true` if the detected public IP is an IPv6 address.
+    #[inline]
+    pub fn is_ipv6(&self) -> bool {
+        self.ip.is_ipv6()
+    }
 }
 
 impl std::fmt::Display for ProviderResult {
