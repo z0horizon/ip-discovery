@@ -304,6 +304,10 @@ mod types_tests {
             Ok(BuiltinProvider::OpenDns)
         );
         assert_eq!(
+            BuiltinProvider::from_str("open-dns"),
+            Ok(BuiltinProvider::OpenDns)
+        );
+        assert_eq!(
             BuiltinProvider::from_str("cloudflare-http"),
             Ok(BuiltinProvider::CloudflareHttp)
         );

@@ -328,7 +328,7 @@ impl FromStr for BuiltinProvider {
             "cloudflare-stun" => Ok(Self::CloudflareStun),
             "google-dns" => Ok(Self::GoogleDns),
             "cloudflare-dns" => Ok(Self::CloudflareDns),
-            "opendns" => Ok(Self::OpenDns),
+            "opendns" | "open-dns" => Ok(Self::OpenDns),
             "cloudflare-http" => Ok(Self::CloudflareHttp),
             "aws" => Ok(Self::Aws),
             _ => Err(ParseProviderError(s.to_string())),
