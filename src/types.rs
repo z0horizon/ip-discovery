@@ -292,3 +292,34 @@ impl std::fmt::Display for BuiltinProvider {
         }
     }
 }
+
+/// Error returned when parsing a [`BuiltinProvider`] from a string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseProviderError(pub(crate) String);
+
+impl std::fmt::Display for ParseProviderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid provider '{}'", self.0)
+    }
+}
+
+impl std::error::Error for ParseProviderError {}
+
+impl FromStr for BuiltinProvider {
+    type Err = ParseProviderError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().replace('_', "-").as_str() {
+            "google-stun" => Ok(Self::GoogleStun),
+            "google-stun1" => Ok(Self::GoogleStun1),
+            "google-stun2" => Ok(Self::GoogleStun2),
+            "cloudflare-stun" => Ok(Self::CloudflareStun),
+            "google-dns" => Ok(Self::GoogleDns),
+            "cloudflare-dns" => Ok(Self::CloudflareDns),
+            "opendns" => Ok(Self::OpenDns),
+            "cloudflare-http" => Ok(Self::CloudflareHttp),
+            "aws" => Ok(Self::Aws),
+            _ => Err(ParseProviderError(s.to_string())),
+        }
+    }
+}

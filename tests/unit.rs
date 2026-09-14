@@ -271,6 +271,49 @@ mod types_tests {
         assert_eq!(IpVersion::from_str("any"), Ok(IpVersion::Any));
         assert!(IpVersion::from_str("v5").is_err());
     }
+
+    #[test]
+    fn test_builtin_provider_from_str() {
+        use std::str::FromStr;
+        assert_eq!(
+            BuiltinProvider::from_str("google-stun"),
+            Ok(BuiltinProvider::GoogleStun)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("google-stun1"),
+            Ok(BuiltinProvider::GoogleStun1)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("google-stun2"),
+            Ok(BuiltinProvider::GoogleStun2)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("cloudflare-stun"),
+            Ok(BuiltinProvider::CloudflareStun)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("google-dns"),
+            Ok(BuiltinProvider::GoogleDns)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("cloudflare-dns"),
+            Ok(BuiltinProvider::CloudflareDns)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("opendns"),
+            Ok(BuiltinProvider::OpenDns)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("cloudflare-http"),
+            Ok(BuiltinProvider::CloudflareHttp)
+        );
+        assert_eq!(BuiltinProvider::from_str("aws"), Ok(BuiltinProvider::Aws));
+        assert_eq!(
+            BuiltinProvider::from_str("GOOGLE_DNS"),
+            Ok(BuiltinProvider::GoogleDns)
+        );
+        assert!(BuiltinProvider::from_str("invalid-provider").is_err());
+    }
 }
 
 #[cfg(feature = "http")]
