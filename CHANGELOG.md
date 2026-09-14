@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.1] - 2026-09-14
 
+### Added
+
+- Added `FromStr` implementations for `Protocol`, `IpVersion`, and `BuiltinProvider`.
+- Added `is_ipv4()` and `is_ipv6()` convenience helper methods to `ProviderResult`.
+- Added `--provider <PROVIDER>` filter argument to `ipd` CLI to select specific providers.
+- Added `-n, --no-newline` flag to `ipd` CLI to suppress trailing newlines in plain mode.
+- Added `-q, --quiet` flag to `ipd` CLI for silent exit-code based scripting and health checks.
+
 ### Changed
 
 - Updated repository links, author metadata, and package scopes to `z0horizon`.

@@ -80,15 +80,18 @@ cargo install ipd
 ### CLI Usage
 
 ```bash
-ipd                    # Plain output; prefer IPv4, fall back to IPv6
-ipd -4                 # IPv4 only
-ipd -6                 # IPv6 only
-ipd -l                 # Local private IP (alias --private)
-ipd -f json            # JSON output
-ipd -f verbose         # Verbose output with provider info
-ipd -s race            # Race all providers, return fastest
-ipd -p dns -p stun     # Use only DNS and STUN protocols
-ipd -t 5               # 5 second timeout
+ipd                         # Plain output; prefer IPv4, fall back to IPv6
+ipd -4                      # IPv4 only
+ipd -6                      # IPv6 only
+ipd -l                      # Local private IP (alias --private)
+ipd -n                      # Suppress trailing newline (plain mode)
+ipd -q                      # Quiet mode; exit 0 if resolved, 1 on error
+ipd -f json                 # JSON output
+ipd -f verbose              # Verbose output with provider info
+ipd -s race                 # Race all providers, return fastest
+ipd -p dns -p stun          # Use only DNS and STUN protocols
+ipd --provider google-stun  # Filter by specific provider (can be repeated)
+ipd -t 5                    # 5 second timeout
 ```
 
 ---
