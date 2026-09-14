@@ -104,8 +104,13 @@ jobs:
         run: npm ci
         working-directory: node
 
-      - name: Build bindings
-        run: npx napi build --release --platform --target ${{ matrix.settings.target }}
+      - name: Build Native Binding
+        run: npx napi build --platform --release --target ${{ matrix.settings.target }}
+        working-directory: node
+
+      - name: Test Native Binding on Host
+        if: matrix.settings.host == 'ubuntu-latest' || matrix.settings.host == 'macos-latest' || matrix.settings.host == 'windows-latest'
+        run: npm test
         working-directory: node
 
       - name: Upload artifact
