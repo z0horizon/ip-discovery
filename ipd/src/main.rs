@@ -1,5 +1,6 @@
 use clap::Parser;
 use ip_discovery::{BuiltinProvider, Config, IpVersion, Protocol, Strategy};
+use std::io::Write;
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -38,6 +39,14 @@ struct Cli {
     /// Show local private IP address instead of public IP
     #[arg(short = 'l', long, alias = "local")]
     private: bool,
+
+    /// Do not output trailing newline (plain format only)
+    #[arg(short = 'n', long)]
+    no_newline: bool,
+
+    /// Quiet mode: suppress output, return 0 if IP resolved, 1 on error
+    #[arg(short = 'q', long)]
+    quiet: bool,
 }
 
 #[derive(Clone, clap::ValueEnum)]
@@ -103,33 +112,42 @@ fn main() -> ExitCode {
 
         match opt_ip {
             Some(ip) => {
-                match cli.format {
-                    OutputFormat::Plain => {
-                        println!("{}", ip);
-                    }
-                    OutputFormat::Json => {
-                        let json = serde_json::json!({
-                            "ip": ip.to_string(),
-                            "type": if ip.is_ipv4() { "IPv4" } else { "IPv6" },
-                            "scope": "private",
-                        });
-                        println!(
-                            "{}",
-                            serde_json::to_string_pretty(&json).unwrap_or_default()
-                        );
-                    }
-                    OutputFormat::Verbose => {
-                        println!("{}", ip);
-                        println!("  scope: private");
-                        println!("  type:  {}", if ip.is_ipv4() { "IPv4" } else { "IPv6" });
+                if !cli.quiet {
+                    match cli.format {
+                        OutputFormat::Plain => {
+                            if cli.no_newline {
+                                print!("{}", ip);
+                                let _ = std::io::stdout().flush();
+                            } else {
+                                println!("{}", ip);
+                            }
+                        }
+                        OutputFormat::Json => {
+                            let json = serde_json::json!({
+                                "ip": ip.to_string(),
+                                "type": if ip.is_ipv4() { "IPv4" } else { "IPv6" },
+                                "scope": "private",
+                            });
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&json).unwrap_or_default()
+                            );
+                        }
+                        OutputFormat::Verbose => {
+                            println!("{}", ip);
+                            println!("  scope: private");
+                            println!("  type:  {}", if ip.is_ipv4() { "IPv4" } else { "IPv6" });
+                        }
                     }
                 }
                 return ExitCode::SUCCESS;
             }
             None => {
-                eprintln!(
-                    "error: no local network interface found with a valid private IP address"
-                );
+                if !cli.quiet {
+                    eprintln!(
+                        "error: no local network interface found with a valid private IP address"
+                    );
+                }
                 return ExitCode::FAILURE;
             }
         }
@@ -174,33 +192,42 @@ fn main() -> ExitCode {
 
     match ip_discovery::blocking::get_ip_with(config) {
         Ok(result) => {
-            match cli.format {
-                OutputFormat::Plain => {
-                    println!("{}", result.ip);
-                }
-                OutputFormat::Json => {
-                    let json = serde_json::json!({
-                        "ip": result.ip.to_string(),
-                        "provider": result.provider,
-                        "protocol": format!("{}", result.protocol),
-                        "latency_ms": result.latency.as_millis(),
-                    });
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(&json).unwrap_or_default()
-                    );
-                }
-                OutputFormat::Verbose => {
-                    println!("{}", result.ip);
-                    println!("  provider: {}", result.provider);
-                    println!("  protocol: {}", result.protocol);
-                    println!("  latency:  {}ms", result.latency.as_millis());
+            if !cli.quiet {
+                match cli.format {
+                    OutputFormat::Plain => {
+                        if cli.no_newline {
+                            print!("{}", result.ip);
+                            let _ = std::io::stdout().flush();
+                        } else {
+                            println!("{}", result.ip);
+                        }
+                    }
+                    OutputFormat::Json => {
+                        let json = serde_json::json!({
+                            "ip": result.ip.to_string(),
+                            "provider": result.provider,
+                            "protocol": format!("{}", result.protocol),
+                            "latency_ms": result.latency.as_millis(),
+                        });
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&json).unwrap_or_default()
+                        );
+                    }
+                    OutputFormat::Verbose => {
+                        println!("{}", result.ip);
+                        println!("  provider: {}", result.provider);
+                        println!("  protocol: {}", result.protocol);
+                        println!("  latency:  {}ms", result.latency.as_millis());
+                    }
                 }
             }
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("error: {e}");
+            if !cli.quiet {
+                eprintln!("error: {e}");
+            }
             ExitCode::FAILURE
         }
     }
@@ -275,5 +302,43 @@ mod tests {
             BuiltinProvider::from(BuiltinProviderArg::Aws),
             BuiltinProvider::Aws
         );
+    }
+
+    #[test]
+    fn test_cli_scripting_flags_defaults() {
+        let cli = Cli::try_parse_from(["ipd"]).unwrap();
+        assert!(!cli.no_newline);
+        assert!(!cli.quiet);
+    }
+
+    #[test]
+    fn test_cli_no_newline_flag() {
+        let cli = Cli::try_parse_from(["ipd", "-n"]).unwrap();
+        assert!(cli.no_newline);
+
+        let cli_long = Cli::try_parse_from(["ipd", "--no-newline"]).unwrap();
+        assert!(cli_long.no_newline);
+    }
+
+    #[test]
+    fn test_cli_quiet_flag() {
+        let cli = Cli::try_parse_from(["ipd", "-q"]).unwrap();
+        assert!(cli.quiet);
+
+        let cli_long = Cli::try_parse_from(["ipd", "--quiet"]).unwrap();
+        assert!(cli_long.quiet);
+    }
+
+    #[test]
+    fn test_cli_scripting_flags_combined() {
+        let cli = Cli::try_parse_from(["ipd", "-n", "-q", "-l"]).unwrap();
+        assert!(cli.no_newline);
+        assert!(cli.quiet);
+        assert!(cli.private);
+
+        let cli_combined = Cli::try_parse_from(["ipd", "-nql"]).unwrap();
+        assert!(cli_combined.no_newline);
+        assert!(cli_combined.quiet);
+        assert!(cli_combined.private);
     }
 }
