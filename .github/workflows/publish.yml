@@ -109,7 +109,7 @@ jobs:
         working-directory: node
 
       - name: Test Native Binding on Host
-        if: matrix.settings.host == 'ubuntu-latest' || matrix.settings.host == 'macos-latest' || matrix.settings.host == 'windows-latest'
+        if: matrix.settings.target == 'x86_64-unknown-linux-gnu' || matrix.settings.target == 'aarch64-apple-darwin' || matrix.settings.target == 'x86_64-pc-windows-msvc'
         run: npm test
         working-directory: node
 
