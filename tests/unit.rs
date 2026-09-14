@@ -245,6 +245,32 @@ mod types_tests {
         let debug = format!("{:?}", Protocol::Dns);
         assert!(debug.contains("Dns"));
     }
+
+    #[test]
+    fn test_protocol_from_str() {
+        use std::str::FromStr;
+        assert_eq!(Protocol::from_str("dns"), Ok(Protocol::Dns));
+        assert_eq!(Protocol::from_str("DNS"), Ok(Protocol::Dns));
+        assert_eq!(Protocol::from_str("stun"), Ok(Protocol::Stun));
+        assert_eq!(Protocol::from_str("STUN"), Ok(Protocol::Stun));
+        assert_eq!(Protocol::from_str("http"), Ok(Protocol::Http));
+        assert_eq!(Protocol::from_str("HTTP"), Ok(Protocol::Http));
+        assert_eq!(Protocol::from_str("https"), Ok(Protocol::Http));
+        assert!(Protocol::from_str("unknown").is_err());
+    }
+
+    #[test]
+    fn test_ip_version_from_str() {
+        use std::str::FromStr;
+        assert_eq!(IpVersion::from_str("v4"), Ok(IpVersion::V4));
+        assert_eq!(IpVersion::from_str("4"), Ok(IpVersion::V4));
+        assert_eq!(IpVersion::from_str("ipv4"), Ok(IpVersion::V4));
+        assert_eq!(IpVersion::from_str("v6"), Ok(IpVersion::V6));
+        assert_eq!(IpVersion::from_str("6"), Ok(IpVersion::V6));
+        assert_eq!(IpVersion::from_str("ipv6"), Ok(IpVersion::V6));
+        assert_eq!(IpVersion::from_str("any"), Ok(IpVersion::Any));
+        assert!(IpVersion::from_str("v5").is_err());
+    }
 }
 
 #[cfg(feature = "http")]

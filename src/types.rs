@@ -1,6 +1,7 @@
 //! Core types for ip-discovery
 
 use std::net::IpAddr;
+use std::str::FromStr;
 use std::time::Duration;
 
 /// Protocol used to detect public IP
@@ -25,6 +26,35 @@ impl std::fmt::Display for Protocol {
     }
 }
 
+/// Error returned when parsing a [`Protocol`] from a string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseProtocolError(pub(crate) String);
+
+impl std::fmt::Display for ParseProtocolError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "invalid protocol '{}', expected 'dns', 'stun', or 'http'",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for ParseProtocolError {}
+
+impl FromStr for Protocol {
+    type Err = ParseProtocolError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "dns" => Ok(Self::Dns),
+            "stun" => Ok(Self::Stun),
+            "http" | "https" => Ok(Self::Http),
+            _ => Err(ParseProtocolError(s.to_string())),
+        }
+    }
+}
+
 /// IP version preference
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
@@ -44,6 +74,35 @@ impl IpVersion {
             Self::V4 => ip.is_ipv4(),
             Self::V6 => ip.is_ipv6(),
             Self::Any => true,
+        }
+    }
+}
+
+/// Error returned when parsing an [`IpVersion`] from a string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseIpVersionError(pub(crate) String);
+
+impl std::fmt::Display for ParseIpVersionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "invalid IP version '{}', expected 'v4', 'v6', or 'any'",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for ParseIpVersionError {}
+
+impl FromStr for IpVersion {
+    type Err = ParseIpVersionError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "v4" | "4" | "ipv4" => Ok(Self::V4),
+            "v6" | "6" | "ipv6" => Ok(Self::V6),
+            "any" => Ok(Self::Any),
+            _ => Err(ParseIpVersionError(s.to_string())),
         }
     }
 }
