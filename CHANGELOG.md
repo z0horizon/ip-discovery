@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-09-14
+
+### Added
+
+- Added `FromStr` implementations for `Protocol`, `IpVersion`, and `BuiltinProvider`.
+- Added `is_ipv4()` and `is_ipv6()` convenience helper methods to `ProviderResult`.
+- Added `--provider <PROVIDER>` filter argument to `ipd` CLI to select specific providers.
+- Added `-n, --no-newline` flag to `ipd` CLI to suppress trailing newlines in plain mode.
+- Added `-q, --quiet` flag to `ipd` CLI for silent exit-code based scripting and health checks.
+
+### Changed
+
+- Updated repository links, author metadata, and package scopes to `z0horizon`.
+
 ## [0.5.0] - 2026-08-25
 
 ### Added
@@ -43,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **NPM Package documentation:** Created a dedicated, Node.js-focused `README.md` for the `@zer0horizon/ip-discovery` package.
+- **NPM Package documentation:** Created a dedicated, Node.js-focused `README.md` for the `@z0horizon/ip-discovery` package.
 
 ### Fixed
 
@@ -53,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Node.js Native Bindings:** Added `@zer0horizon/ip-discovery` npm package built using `napi-rs`, providing high-performance, type-safe bindings for JavaScript/TypeScript environments.
+- **Node.js Native Bindings:** Added `@z0horizon/ip-discovery` npm package built using `napi-rs`, providing high-performance, type-safe bindings for JavaScript/TypeScript environments.
 - **Local Private IP Lookup:** Added support for synchronous, offline-friendly private IP address lookup (IPv4 and IPv6) via `get_private_ip()` / `get_private_ipv6()` in Rust, `getPrivateIp()` / `getPrivateIpv6()` in JS, and `-l` / `--private` in the CLI.
 - **Husky Pre-commit Hooks:** Added local pre-commit hooks to enforce formatting (`cargo fmt`), strict lints (`clippy`), and all unit tests locally.
 

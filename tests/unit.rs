@@ -170,7 +170,7 @@ mod error_tests {
 
 #[cfg(test)]
 mod types_tests {
-    use ip_discovery::{BuiltinProvider, IpVersion, Protocol};
+    use ip_discovery::{BuiltinProvider, IpVersion, Protocol, ProviderResult};
 
     #[test]
     fn test_protocol_display() {
@@ -244,6 +244,103 @@ mod types_tests {
     fn test_protocol_debug_impl() {
         let debug = format!("{:?}", Protocol::Dns);
         assert!(debug.contains("Dns"));
+    }
+
+    #[test]
+    fn test_protocol_from_str() {
+        use std::str::FromStr;
+        assert_eq!(Protocol::from_str("dns"), Ok(Protocol::Dns));
+        assert_eq!(Protocol::from_str("DNS"), Ok(Protocol::Dns));
+        assert_eq!(Protocol::from_str("stun"), Ok(Protocol::Stun));
+        assert_eq!(Protocol::from_str("STUN"), Ok(Protocol::Stun));
+        assert_eq!(Protocol::from_str("http"), Ok(Protocol::Http));
+        assert_eq!(Protocol::from_str("HTTP"), Ok(Protocol::Http));
+        assert_eq!(Protocol::from_str("https"), Ok(Protocol::Http));
+        assert!(Protocol::from_str("unknown").is_err());
+    }
+
+    #[test]
+    fn test_ip_version_from_str() {
+        use std::str::FromStr;
+        assert_eq!(IpVersion::from_str("v4"), Ok(IpVersion::V4));
+        assert_eq!(IpVersion::from_str("4"), Ok(IpVersion::V4));
+        assert_eq!(IpVersion::from_str("ipv4"), Ok(IpVersion::V4));
+        assert_eq!(IpVersion::from_str("v6"), Ok(IpVersion::V6));
+        assert_eq!(IpVersion::from_str("6"), Ok(IpVersion::V6));
+        assert_eq!(IpVersion::from_str("ipv6"), Ok(IpVersion::V6));
+        assert_eq!(IpVersion::from_str("any"), Ok(IpVersion::Any));
+        assert!(IpVersion::from_str("v5").is_err());
+    }
+
+    #[test]
+    fn test_builtin_provider_from_str() {
+        use std::str::FromStr;
+        assert_eq!(
+            BuiltinProvider::from_str("google-stun"),
+            Ok(BuiltinProvider::GoogleStun)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("google-stun1"),
+            Ok(BuiltinProvider::GoogleStun1)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("google-stun2"),
+            Ok(BuiltinProvider::GoogleStun2)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("cloudflare-stun"),
+            Ok(BuiltinProvider::CloudflareStun)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("google-dns"),
+            Ok(BuiltinProvider::GoogleDns)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("cloudflare-dns"),
+            Ok(BuiltinProvider::CloudflareDns)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("opendns"),
+            Ok(BuiltinProvider::OpenDns)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("open-dns"),
+            Ok(BuiltinProvider::OpenDns)
+        );
+        assert_eq!(
+            BuiltinProvider::from_str("cloudflare-http"),
+            Ok(BuiltinProvider::CloudflareHttp)
+        );
+        assert_eq!(BuiltinProvider::from_str("aws"), Ok(BuiltinProvider::Aws));
+        assert_eq!(
+            BuiltinProvider::from_str("GOOGLE_DNS"),
+            Ok(BuiltinProvider::GoogleDns)
+        );
+        assert!(BuiltinProvider::from_str("invalid-provider").is_err());
+    }
+
+    #[test]
+    fn test_provider_result_ip_helpers() {
+        use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+        use std::time::Duration;
+
+        let v4_res = ProviderResult {
+            ip: IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)),
+            provider: "test".into(),
+            protocol: Protocol::Dns,
+            latency: Duration::from_millis(10),
+        };
+        assert!(v4_res.is_ipv4());
+        assert!(!v4_res.is_ipv6());
+
+        let v6_res = ProviderResult {
+            ip: IpAddr::V6(Ipv6Addr::LOCALHOST),
+            provider: "test".into(),
+            protocol: Protocol::Dns,
+            latency: Duration::from_millis(10),
+        };
+        assert!(!v6_res.is_ipv4());
+        assert!(v6_res.is_ipv6());
     }
 }
 

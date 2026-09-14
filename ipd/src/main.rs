@@ -1,5 +1,6 @@
 use clap::Parser;
-use ip_discovery::{Config, IpVersion, Protocol, Strategy};
+use ip_discovery::{BuiltinProvider, Config, IpVersion, Protocol, Strategy};
+use std::io::Write;
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -27,6 +28,10 @@ struct Cli {
     #[arg(short, long)]
     protocol: Vec<ProtocolArg>,
 
+    /// Filter by specific provider (can be repeated): google-stun, cloudflare-dns, etc.
+    #[arg(long = "provider")]
+    provider: Vec<BuiltinProviderArg>,
+
     /// Timeout per provider in seconds
     #[arg(short, long, default_value = "10")]
     timeout: u64,
@@ -34,6 +39,14 @@ struct Cli {
     /// Show local private IP address instead of public IP
     #[arg(short = 'l', long, alias = "local")]
     private: bool,
+
+    /// Do not output trailing newline (plain format only)
+    #[arg(short = 'n', long)]
+    no_newline: bool,
+
+    /// Quiet mode: suppress output, return 0 if IP resolved, 1 on error
+    #[arg(short = 'q', long)]
+    quiet: bool,
 }
 
 #[derive(Clone, clap::ValueEnum)]
@@ -57,6 +70,37 @@ enum ProtocolArg {
     Http,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+#[value(rename_all = "kebab-case")]
+enum BuiltinProviderArg {
+    GoogleStun,
+    GoogleStun1,
+    GoogleStun2,
+    CloudflareStun,
+    GoogleDns,
+    CloudflareDns,
+    #[value(alias = "opendns")]
+    OpenDns,
+    CloudflareHttp,
+    Aws,
+}
+
+impl From<BuiltinProviderArg> for BuiltinProvider {
+    fn from(arg: BuiltinProviderArg) -> Self {
+        match arg {
+            BuiltinProviderArg::GoogleStun => Self::GoogleStun,
+            BuiltinProviderArg::GoogleStun1 => Self::GoogleStun1,
+            BuiltinProviderArg::GoogleStun2 => Self::GoogleStun2,
+            BuiltinProviderArg::CloudflareStun => Self::CloudflareStun,
+            BuiltinProviderArg::GoogleDns => Self::GoogleDns,
+            BuiltinProviderArg::CloudflareDns => Self::CloudflareDns,
+            BuiltinProviderArg::OpenDns => Self::OpenDns,
+            BuiltinProviderArg::CloudflareHttp => Self::CloudflareHttp,
+            BuiltinProviderArg::Aws => Self::Aws,
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -68,33 +112,42 @@ fn main() -> ExitCode {
 
         match opt_ip {
             Some(ip) => {
-                match cli.format {
-                    OutputFormat::Plain => {
-                        println!("{}", ip);
-                    }
-                    OutputFormat::Json => {
-                        let json = serde_json::json!({
-                            "ip": ip.to_string(),
-                            "type": if ip.is_ipv4() { "IPv4" } else { "IPv6" },
-                            "scope": "private",
-                        });
-                        println!(
-                            "{}",
-                            serde_json::to_string_pretty(&json).unwrap_or_default()
-                        );
-                    }
-                    OutputFormat::Verbose => {
-                        println!("{}", ip);
-                        println!("  scope: private");
-                        println!("  type:  {}", if ip.is_ipv4() { "IPv4" } else { "IPv6" });
+                if !cli.quiet {
+                    match cli.format {
+                        OutputFormat::Plain => {
+                            if cli.no_newline {
+                                print!("{}", ip);
+                                let _ = std::io::stdout().flush();
+                            } else {
+                                println!("{}", ip);
+                            }
+                        }
+                        OutputFormat::Json => {
+                            let json = serde_json::json!({
+                                "ip": ip.to_string(),
+                                "type": if ip.is_ipv4() { "IPv4" } else { "IPv6" },
+                                "scope": "private",
+                            });
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&json).unwrap_or_default()
+                            );
+                        }
+                        OutputFormat::Verbose => {
+                            println!("{}", ip);
+                            println!("  scope: private");
+                            println!("  type:  {}", if ip.is_ipv4() { "IPv4" } else { "IPv6" });
+                        }
                     }
                 }
                 return ExitCode::SUCCESS;
             }
             None => {
-                eprintln!(
-                    "error: no local network interface found with a valid private IP address"
-                );
+                if !cli.quiet {
+                    eprintln!(
+                        "error: no local network interface found with a valid private IP address"
+                    );
+                }
                 return ExitCode::FAILURE;
             }
         }
@@ -130,38 +183,162 @@ fn main() -> ExitCode {
         builder = builder.protocols(&protocols);
     }
 
+    if !cli.provider.is_empty() {
+        let providers: Vec<BuiltinProvider> = cli.provider.into_iter().map(Into::into).collect();
+        builder = builder.providers(&providers);
+    }
+
     let config = builder.build();
 
     match ip_discovery::blocking::get_ip_with(config) {
         Ok(result) => {
-            match cli.format {
-                OutputFormat::Plain => {
-                    println!("{}", result.ip);
-                }
-                OutputFormat::Json => {
-                    let json = serde_json::json!({
-                        "ip": result.ip.to_string(),
-                        "provider": result.provider,
-                        "protocol": format!("{}", result.protocol),
-                        "latency_ms": result.latency.as_millis(),
-                    });
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(&json).unwrap_or_default()
-                    );
-                }
-                OutputFormat::Verbose => {
-                    println!("{}", result.ip);
-                    println!("  provider: {}", result.provider);
-                    println!("  protocol: {}", result.protocol);
-                    println!("  latency:  {}ms", result.latency.as_millis());
+            if !cli.quiet {
+                match cli.format {
+                    OutputFormat::Plain => {
+                        if cli.no_newline {
+                            print!("{}", result.ip);
+                            let _ = std::io::stdout().flush();
+                        } else {
+                            println!("{}", result.ip);
+                        }
+                    }
+                    OutputFormat::Json => {
+                        let json = serde_json::json!({
+                            "ip": result.ip.to_string(),
+                            "provider": result.provider,
+                            "protocol": format!("{}", result.protocol),
+                            "latency_ms": result.latency.as_millis(),
+                        });
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&json).unwrap_or_default()
+                        );
+                    }
+                    OutputFormat::Verbose => {
+                        println!("{}", result.ip);
+                        println!("  provider: {}", result.provider);
+                        println!("  protocol: {}", result.protocol);
+                        println!("  latency:  {}ms", result.latency.as_millis());
+                    }
                 }
             }
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("error: {e}");
+            if !cli.quiet {
+                eprintln!("error: {e}");
+            }
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cli_provider_flag() {
+        let cli = Cli::try_parse_from([
+            "ipd",
+            "--provider",
+            "cloudflare-dns",
+            "--provider",
+            "google-stun",
+        ])
+        .unwrap();
+        assert_eq!(cli.provider.len(), 2);
+        assert_eq!(cli.provider[0], BuiltinProviderArg::CloudflareDns);
+        assert_eq!(cli.provider[1], BuiltinProviderArg::GoogleStun);
+
+        let provider: BuiltinProvider = cli.provider[0].into();
+        assert_eq!(provider, BuiltinProvider::CloudflareDns);
+    }
+
+    #[test]
+    fn test_cli_provider_opendns() {
+        let cli = Cli::try_parse_from(["ipd", "--provider", "open-dns"]).unwrap();
+        assert_eq!(cli.provider[0], BuiltinProviderArg::OpenDns);
+
+        let cli_alias = Cli::try_parse_from(["ipd", "--provider", "opendns"]).unwrap();
+        assert_eq!(cli_alias.provider[0], BuiltinProviderArg::OpenDns);
+    }
+
+    #[test]
+    fn test_builtin_provider_arg_from_all_variants() {
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::GoogleStun),
+            BuiltinProvider::GoogleStun
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::GoogleStun1),
+            BuiltinProvider::GoogleStun1
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::GoogleStun2),
+            BuiltinProvider::GoogleStun2
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::CloudflareStun),
+            BuiltinProvider::CloudflareStun
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::GoogleDns),
+            BuiltinProvider::GoogleDns
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::CloudflareDns),
+            BuiltinProvider::CloudflareDns
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::OpenDns),
+            BuiltinProvider::OpenDns
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::CloudflareHttp),
+            BuiltinProvider::CloudflareHttp
+        );
+        assert_eq!(
+            BuiltinProvider::from(BuiltinProviderArg::Aws),
+            BuiltinProvider::Aws
+        );
+    }
+
+    #[test]
+    fn test_cli_scripting_flags_defaults() {
+        let cli = Cli::try_parse_from(["ipd"]).unwrap();
+        assert!(!cli.no_newline);
+        assert!(!cli.quiet);
+    }
+
+    #[test]
+    fn test_cli_no_newline_flag() {
+        let cli = Cli::try_parse_from(["ipd", "-n"]).unwrap();
+        assert!(cli.no_newline);
+
+        let cli_long = Cli::try_parse_from(["ipd", "--no-newline"]).unwrap();
+        assert!(cli_long.no_newline);
+    }
+
+    #[test]
+    fn test_cli_quiet_flag() {
+        let cli = Cli::try_parse_from(["ipd", "-q"]).unwrap();
+        assert!(cli.quiet);
+
+        let cli_long = Cli::try_parse_from(["ipd", "--quiet"]).unwrap();
+        assert!(cli_long.quiet);
+    }
+
+    #[test]
+    fn test_cli_scripting_flags_combined() {
+        let cli = Cli::try_parse_from(["ipd", "-n", "-q", "-l"]).unwrap();
+        assert!(cli.no_newline);
+        assert!(cli.quiet);
+        assert!(cli.private);
+
+        let cli_combined = Cli::try_parse_from(["ipd", "-nql"]).unwrap();
+        assert!(cli_combined.no_newline);
+        assert!(cli_combined.quiet);
+        assert!(cli_combined.private);
     }
 }

@@ -71,7 +71,10 @@ pub use provider::{BlockingProvider, BoxedBlockingProvider};
 pub use provider::{BoxedProvider, Provider};
 #[cfg(feature = "tokio")]
 pub use resolver::Resolver;
-pub use types::{BuiltinProvider, IpVersion, Protocol, ProviderResult};
+pub use types::{
+    BuiltinProvider, IpVersion, ParseIpVersionError, ParseProtocolError, ParseProviderError,
+    Protocol, ProviderResult,
+};
 
 #[cfg(feature = "tokio")]
 /// Get public IP address using default configuration asynchronously.
