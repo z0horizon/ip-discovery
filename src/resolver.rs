@@ -50,10 +50,14 @@ impl Resolver {
     /// produces either a [`ProviderResult`] or a [`ProviderError`].
     fn make_provider_future<'a>(&'a self, provider: &'a BoxedProvider) -> BoxFut<'a> {
         let provider_name = provider.name().to_string();
+        let timeout_duration = self.config.timeout;
+        if timeout_duration.is_zero() {
+            return Box::pin(async move { Err(ProviderError::message(provider_name, "timeout")) });
+        }
+
         let protocol = provider.protocol();
         let start = Instant::now();
         let fut = provider.get_ip(self.config.version);
-        let timeout_duration = self.config.timeout;
         let version = self.config.version;
 
         Box::pin(async move {

@@ -225,6 +225,24 @@ mod resolver_tests {
         assert_eq!(result.ip, ip(4, 4, 4, 4));
     }
 
+    #[tokio::test]
+    async fn first_zero_timeout_fails_immediately() {
+        let config = Config::builder()
+            .timeout(Duration::ZERO)
+            .strategy(Strategy::First)
+            .add_provider(MockProvider::ok("Instant", ip(4, 4, 4, 4)))
+            .build();
+
+        let err = Resolver::new(config).resolve().await.unwrap_err();
+        match err {
+            Error::AllProvidersFailed(errors) => {
+                assert_eq!(errors.len(), 1);
+                assert!(errors[0].to_string().contains("timeout"));
+            }
+            other => panic!("expected AllProvidersFailed, got: {other}"),
+        }
+    }
+
     // ── Strategy::Race ──────────────────────────────────────────────
 
     #[tokio::test]
@@ -282,6 +300,24 @@ mod resolver_tests {
         );
         let result = Resolver::new(config).resolve().await.unwrap();
         assert_eq!(result.ip, ip(6, 6, 6, 6));
+    }
+
+    #[tokio::test]
+    async fn race_zero_timeout_fails_immediately() {
+        let config = Config::builder()
+            .timeout(Duration::ZERO)
+            .strategy(Strategy::Race)
+            .add_provider(MockProvider::ok("Instant", ip(6, 6, 6, 6)))
+            .build();
+
+        let err = Resolver::new(config).resolve().await.unwrap_err();
+        match err {
+            Error::AllProvidersFailed(errors) => {
+                assert_eq!(errors.len(), 1);
+                assert!(errors[0].to_string().contains("timeout"));
+            }
+            other => panic!("expected AllProvidersFailed, got: {other}"),
+        }
     }
 
     // ── Strategy::Consensus ─────────────────────────────────────────
@@ -348,6 +384,30 @@ mod resolver_tests {
                 let error_msgs: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
                 assert!(error_msgs.iter().any(|m| m.contains("connection refused")));
                 assert!(error_msgs.iter().any(|m| m.contains("dns timeout")));
+            }
+            other => panic!("expected ConsensusNotReached, got: {other}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn consensus_zero_timeout_fails_immediately() {
+        let config = Config::builder()
+            .timeout(Duration::ZERO)
+            .strategy(Strategy::Consensus { min_agree: 2 })
+            .add_provider(MockProvider::ok("Instant", ip(1, 1, 1, 1)))
+            .build();
+
+        let err = Resolver::new(config).resolve().await.unwrap_err();
+        match err {
+            Error::ConsensusNotReached {
+                required,
+                got,
+                errors,
+            } => {
+                assert_eq!(required, 2);
+                assert_eq!(got, 0);
+                assert_eq!(errors.len(), 1);
+                assert!(errors[0].to_string().contains("timeout"));
             }
             other => panic!("expected ConsensusNotReached, got: {other}"),
         }
