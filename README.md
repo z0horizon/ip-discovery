@@ -334,6 +334,10 @@ cargo run --example benchmark --all-features
 
 Rust **1.85** or later.
 
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for our upcoming milestones, planned features, and architectural directions.
+
 ## Contributing and security
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and required

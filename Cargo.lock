@@ -599,7 +599,7 @@ dependencies = [
 
 [[package]]
 name = "ip-discovery"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "getrandom 0.4.3",
  "reqwest",
@@ -608,7 +608,7 @@ dependencies = [
 
 [[package]]
 name = "ip-discovery-node"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "ip-discovery",
  "napi",
@@ -617,7 +617,7 @@ dependencies = [
 
 [[package]]
 name = "ipd"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "clap",
  "ip-discovery",

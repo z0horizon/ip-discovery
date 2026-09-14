@@ -9,6 +9,8 @@
 
 # Scratch directories
 /scratch/
+.worktrees/
+.superpowers/
 
 # Node.js
 node_modules/
