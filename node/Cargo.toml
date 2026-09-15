@@ -8,6 +8,6 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "2.16", features = ["async", "tokio_rt"] }
-napi-derive = "2.16"
+napi = { version = "3.4", features = ["async", "tokio_rt"] }
+napi-derive = "3.3"
 ip-discovery = { path = "..", features = ["all"] }
